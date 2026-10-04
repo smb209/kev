@@ -1,11 +1,15 @@
 """Post-training FP8 / NVFP4 quantization of a loaded Kev model, for serving and benchmarking on a DGX Spark (GB10, sm_121).
 
-Weights are quantized once at load from the official bf16 checkpoint; activations are quantized per call, dynamically,
-on the device (no host sync, so the passes stay capturable as CUDA graphs). Nothing in kev/ is edited: the CLI wraps
+Weights are quantized once at load from the official bf16 checkpoint; activations are quantized per call on the device (no
+host sync, so the passes stay capturable as CUDA graphs). FP8 activations take a per-token scale (row-independent). NVFP4
+activations take a per-layer static global scale calibrated once on the calibration partition of decision-v7 (--act-scale
+static, the default; a question's answer then does not depend on what shares its forward pass), or the old per-call
+dynamic one from the amax of the whole flattened batch (--act-scale dynamic, kept for comparison). Nothing in kev/ is edited: the CLI wraps
 `kev.checkpoint.Checkpoint._load_torch` and then runs kev.serve's or kev.benchmark's own main with the remaining argv.
 
     python spark/kev_quant.py --scheme nvfp4 serve --run jaredpalmer/kev-4b --host 0.0.0.0 --port 8019
     python spark/kev_quant.py --scheme fp8 benchmark --run jaredpalmer/kev-0.8b --suite evals/external/semif-v1 --out runs/spark/q-...
+    python spark/kev_quant.py --scheme nvfp4 isolation --run jaredpalmer/kev-4b
     python spark/kev_quant.py layercheck --run jaredpalmer/kev-0.8b --suite evals/external/semif-v1
 
 Schemes (decoder-layer projections only; embeddings, norms, the DeltaNet conv / gates and kev's PointerHead are untouched):
@@ -28,6 +32,7 @@ weight freed as soon as its replacement exists, so the peak stays the bf16 model
 for CUDA; kev.benchmark: both off, as LocalPredictor's reference path); --fused / --graphs override.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -48,6 +53,7 @@ SCHEMES = ("bf16", "fp8", "nvfp4", "nvfp4-mlp")
 MIN_DIM = 1024          # either dimension under this stays bf16
 FP8_MAX = 448.0         # e4m3 largest normal
 FP4_MAX = 6.0           # e2m1 largest
+CALIB_SUITE = "evals/v7/decision-v7"   # its calibration partition drives the activation calibration; never development / test
 NVFP4_BLOCK = 16
 MLP_ROLES = ("gate_up", "gate_proj", "up_proj", "down_proj")
 
@@ -99,8 +105,12 @@ class Fp8Linear(nn.Module):
 
 class Nvfp4Linear(nn.Module):
     """y = x W^T (+ b) in NVFP4: W quantized once (fp4_quantize, global scale 448*6 / amax(W), swizzled e4m3 scales per 16),
-    x quantized per call with a dynamic global scale from its amax over the whole tensor (one device reduction), FlashInfer
-    mm_fp4 (backend 'cutlass' by default; 'trtllm' does not support sm_121), bf16 out. Any leading dims."""
+    x quantized per call with a global scale 448*6 / amax, FlashInfer mm_fp4 (backend 'cutlass' by default; 'trtllm' does
+    not support sm_121), bf16 out. Any leading dims. act_mode:
+      'static'     amax fixed by calibrate_model (times a margin), a device buffer: a row's result does not depend on the
+                   other rows of the pass, no host sync, graph capturable
+      'calibrate'  dynamic scale for the output, and act_amax = running max of amax(|x|) over every input
+      'dynamic'    amax over the whole flattened batch, padding rows included, on every call (rows interact)"""
     precision = "nvfp4"
     backend = "cutlass"
 
@@ -115,6 +125,9 @@ class Nvfp4Linear(nn.Module):
         self.register_buffer("wsf", sf)           # swizzled e4m3 block scales
         self.register_buffer("wgs", gw.float())   # [1] fp32 global scale
         self.register_buffer("bias", None if bias is None else bias.detach().to(torch.bfloat16))
+        self.act_mode = "dynamic"
+        self.register_buffer("act_amax", torch.zeros(1, device=w.device))   # calibration running max
+        self.register_buffer("ga", torch.ones(1, device=w.device))          # static activation global scale
 
     def forward(self, x):
         from flashinfer import fp4_quantize, mm_fp4
@@ -122,7 +135,12 @@ class Nvfp4Linear(nn.Module):
         x2 = x.reshape(-1, self.in_features)
         if x2.dtype != torch.bfloat16: x2 = x2.to(torch.bfloat16)
         x2 = x2.contiguous()
-        ga = (FP8_MAX * FP4_MAX) / torch.linalg.vector_norm(x2, float("inf")).float().clamp(min=1e-12).reshape(1)
+        if self.act_mode == "static":
+            ga = self.ga
+        else:
+            amax = torch.linalg.vector_norm(x2, float("inf")).float().reshape(1)
+            if self.act_mode == "calibrate": torch.maximum(self.act_amax, amax, out=self.act_amax)   # device op, no sync
+            ga = (FP8_MAX * FP4_MAX) / amax.clamp(min=1e-12)
         aq, asf = fp4_quantize(x2, ga, NVFP4_BLOCK, False, True)
         y = mm_fp4(aq, self.qweight.T, asf, self.wsf.T, 1.0 / (ga * self.wgs), torch.bfloat16, backend=self.backend)
         if self.bias is not None: y = y + self.bias
@@ -303,14 +321,71 @@ def print_report(r):
     print(f"[kev_quant] GPU allocated {m['allocated_before_gib']} -> {m['allocated_after_gib']} GiB (peak during {m['peak_during_gib']} GiB)", flush=True)
 
 
+# --- static activation scales ---------------------------------------------------------------------------------------------
+
+def _nvfp4_modules(model):
+    return {n: m for n, m in model.lm.named_modules() if isinstance(m, Nvfp4Linear)}
+
+
+def _set_act_mode(mods, mode):
+    for m in mods.values(): m.act_mode = mode
+
+
+@torch.no_grad()
+def calibrate_model(model, tok, records, margin, path, run, scheme, fused, suite=CALIB_SUITE):
+    """Static NVFP4 activation scales: run `records` (the calibration partition of `suite`, never development or test)
+    through model.probs (the serving path) with every Nvfp4Linear in 'calibrate' mode, then freeze
+    ga = 448*6 / (margin * calibrated amax) as a device buffer. The amaxes + meta are saved to `path` (JSON keyed by module
+    name); a file whose (run, scheme, fused, record count) match is loaded instead, and the margin is applied to its amaxes.
+    -> info dict for quant.json."""
+    from kev.data import materialize
+    mods = _nvfp4_modules(model)
+    info = {"mode": "static", "margin": margin, "calib_records": len(records), "calib_suite": suite, "calib_partition": "calibration",
+            "scales_path": str(path), "modules": len(mods)}
+    if not mods:
+        info.update(sha256=None, loaded=False); return info
+    meta = {"run": run, "scheme": scheme, "fused": fused, "calib_records": len(records), "suite": suite, "partition": "calibration"}
+    saved = None
+    if Path(path).exists():
+        d = json.loads(Path(path).read_text(encoding="utf-8"))
+        if d.get("meta") == meta and set(d.get("amax", {})) == set(mods): saved = d
+        else: print(f"[kev_quant] {path} does not match {meta} / these modules; recalibrating", flush=True)
+    t0 = time.time()
+    if saved is None:
+        for m in mods.values(): m.act_amax.zero_()
+        _set_act_mode(mods, "calibrate")
+        for r in records:
+            model.probs(model.encode(tok, materialize(r), max_state=65536, max_branch=73728))
+        torch.cuda.synchronize()
+        amax = {n: m.act_amax.item() for n, m in mods.items()}
+        body = {"meta": meta, "margin": margin, "amax": amax,
+                "ga": {n: FP8_MAX * FP4_MAX / (margin * max(a, 1e-12)) for n, a in amax.items()}}
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).write_text(json.dumps(body, indent=1) + "\n", encoding="utf-8")
+    else:
+        amax = saved["amax"]
+    for n, m in mods.items():
+        m.ga.copy_(torch.tensor([FP8_MAX * FP4_MAX / (margin * max(amax[n], 1e-12))], device=m.ga.device))
+    _set_act_mode(mods, "static")
+    info.update(sha256=hashlib.sha256(Path(path).read_bytes()).hexdigest(), loaded=saved is not None, seconds=round(time.time() - t0, 1))
+    print(f"[kev_quant] static activation scales: {len(mods)} modules, {len(records)} records, margin {margin}, "
+          f"{'loaded from' if saved else 'calibrated, saved to'} {path} (sha256 {info['sha256'][:12]}, {info['seconds']} s)", flush=True)
+    return info
+
+
+def default_scales_path(requested, scheme):
+    return f"runs/spark/quant/act-scales-{re.sub(r'[^A-Za-z0-9._-]+', '_', str(requested))}-{scheme}.json"
+
+
 # --- wrapping kev's loader ------------------------------------------------------------------------------------------------
 
-STATE = {"report": None, "load_seconds": None, "opts": None}
+STATE = {"report": None, "load_seconds": None, "opts": None, "act_scale": None}
 
 
-def install(scheme, exclude=(), fused=None, graphs=None):
+def install(scheme, exclude=(), fused=None, graphs=None, act_scale="static", act_margin=4.0, calib_records=64, act_scales=None):
     """Patch kev.checkpoint.Checkpoint._load_torch: bf16 backbone, CUDA graphs attached only after quantization.
-    fused / graphs: None = whatever the caller's LoadOptions say; True / False to override."""
+    fused / graphs: None = whatever the caller's LoadOptions say; True / False to override. act_scale: NVFP4 activation scale,
+    'static' (calibrated right after quantize_model, before CUDA graphs) or 'dynamic'; act_scales: the JSON path."""
     from kev.checkpoint import Checkpoint
     original = Checkpoint._load_torch
 
@@ -322,6 +397,15 @@ def install(scheme, exclude=(), fused=None, graphs=None):
         m = original(self, tok, device, replace(opts, cuda_graphs=False))
         if not str(device).startswith("cuda"): raise ValueError("kev_quant needs CUDA")
         STATE["report"] = quantize_model(m, scheme, exclude)
+        mods = _nvfp4_modules(m)
+        if act_scale == "static" and mods:
+            from kev.suite import load_split
+            records = load_split(CALIB_SUITE, "calibration")[:calib_records]
+            STATE["act_scale"] = calibrate_model(m, tok, records, act_margin, act_scales or default_scales_path(self.requested, scheme + ("-fused" if opts.fused else "")),
+                                                 self.requested, scheme, bool(opts.fused))
+        else:
+            _set_act_mode(mods, "dynamic")
+            STATE["act_scale"] = {"mode": "dynamic" if mods else "not applicable (no NVFP4 layers)"}
         if opts.cuda_graphs and m.hybrid:
             from kev.cuda_graphs import CudaGraphs
             m.graphs = CudaGraphs(m.lm, m.pad_id)   # captures lazily (kev.serve's model thread), so always after quantization
@@ -351,7 +435,7 @@ def write_quant_json(path, scheme, extra):
     r = STATE["report"] or {}
     body = {"scheme": scheme, "load_options": STATE["opts"], "load_seconds": STATE["load_seconds"],
             **{k: r.get(k) for k in ("coverage", "projection_params", "fallbacks", "fused", "nvfp4_backend", "fp8_act_quant", "min_dim", "exclude", "memory")},
-            "environment": environment(), **extra, "layers": r.get("layers")}
+            "act_scale": STATE["act_scale"], "environment": environment(), **extra, "layers": r.get("layers")}
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
     print(f"[kev_quant] wrote {path}")
@@ -398,6 +482,35 @@ def layercheck(run, suite, names, records=1, out=None):
     return results
 
 
+# --- isolation: a question's probabilities alone vs inside its full record ------------------------------------------------
+
+@torch.no_grad()
+def isolation(run, records=5, out=None):
+    """For `records` development records of decision-v7 with >= 2 questions: score the full record, then each question alone
+    (a record with just that question), through model.probs. -> max |dp| over every question (0.0 = bit-identical)."""
+    from kev.checkpoint import Checkpoint, LoadOptions
+    from kev.data import materialize
+    from kev.suite import load_split
+    tok, model = Checkpoint(run).load("cuda", LoadOptions(dtype=torch.bfloat16))
+    recs = [r for r in load_split(CALIB_SUITE, "development") if len(r["questions"]) >= 2][:records]
+    rows, worst = [], 0.0
+    for r in recs:
+        enc = lambda rec: model.encode(tok, materialize(rec), max_state=65536, max_branch=73728)
+        full = model.probs(enc(r))
+        for k, qid in enumerate(r["questions"]):
+            alone = model.probs(enc({**r, "questions": {qid: r["questions"][qid]}}))[0]
+            d = (full[k].float() - alone.float()).abs().max().item()
+            worst = max(worst, d)
+            rows.append({"qid": qid, "questions_in_record": len(r["questions"]), "max_abs_dp": d, "bit_identical": bool(torch.equal(full[k], alone))})
+            print(f"[kev_quant] isolation {qid} ({len(r['questions'])} questions): max|dp|={d:.3e}", flush=True)
+    res = {"run": run, "scheme": STATE["report"]["scheme"] if STATE["report"] else None, "act_scale": STATE["act_scale"],
+           "records": len(recs), "questions": len(rows), "max_abs_dp": worst, "all_bit_identical": all(x["bit_identical"] for x in rows), "rows": rows}
+    print(f"[kev_quant] ISOLATION scheme={res['scheme']} act_scale={(STATE['act_scale'] or {}).get('mode')} records={len(recs)} "
+          f"questions={len(rows)} max|dp|={worst:.3e} bit_identical={res['all_bit_identical']}", flush=True)
+    if out: Path(out).parent.mkdir(parents=True, exist_ok=True); Path(out).write_text(json.dumps(res, indent=2) + "\n")
+    return res
+
+
 # --- CLI ------------------------------------------------------------------------------------------------------------------
 
 def _flag(v):
@@ -406,7 +519,7 @@ def _flag(v):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    cmds = ("serve", "benchmark", "layercheck")
+    cmds = ("serve", "benchmark", "layercheck", "isolation")
     at = next((i for i, a in enumerate(argv) if a in cmds), None)
     if at is None: sys.exit(f"usage: kev_quant.py [--scheme S] [--fused auto|0|1] [--graphs auto|0|1] [--exclude RE ...] {{{','.join(cmds)}}} ...")
     ap = argparse.ArgumentParser(prog="kev_quant.py")
@@ -416,6 +529,12 @@ def main(argv=None):
     ap.add_argument("--exclude", nargs="*", default=[], help="regexes on projection names to keep bf16")
     ap.add_argument("--nvfp4-backend", default="cutlass", choices=["cutlass", "b12x", "cudnn"])
     ap.add_argument("--act-quant", default="torch", choices=["torch", "compile"], help="FP8 per-token activation quantization: eager or torch.compile'd")
+    ap.add_argument("--act-scale", choices=["static", "dynamic"], default="static",
+                    help="NVFP4 activation global scale: calibrated per layer and fixed (default), or per call from the batch's amax")
+    ap.add_argument("--act-margin", type=float, default=4.0, help="static: headroom over the calibrated amax (e4m3 block scales have range to spare)")
+    ap.add_argument("--calib-records", type=int, default=64, help="static: records of decision-v7's calibration partition to calibrate on")
+    ap.add_argument("--act-scales", help="static: scales JSON, loaded if present (matching run / scheme / records) else written "
+                                         "(default runs/spark/quant/act-scales-<run>-<scheme>.json)")
     ap.add_argument("--quant-json", help="serve: also write the quantization report here")
     a = ap.parse_args(argv[:at])
     cmd, rest = argv[at], argv[at + 1:]
@@ -433,7 +552,12 @@ def main(argv=None):
                             "layers.11.mlp.up_proj", "layers.11.mlp.down_proj", "layers.23.mlp.down_proj"]
         return layercheck(b.run, b.suite, names, b.records, b.out)
 
-    install(a.scheme, a.exclude, _flag(a.fused), _flag(a.graphs))
+    install(a.scheme, a.exclude, _flag(a.fused), _flag(a.graphs), a.act_scale, a.act_margin, a.calib_records, a.act_scales)
+    if cmd == "isolation":
+        ip = argparse.ArgumentParser(prog="kev_quant.py isolation")
+        ip.add_argument("--run", required=True); ip.add_argument("--records", type=int, default=5); ip.add_argument("--out")
+        b = ip.parse_args(rest)
+        return isolation(b.run, b.records, b.out)
     if cmd == "serve":
         import kev.serve
         sys.argv = ["kev.serve", *rest]
