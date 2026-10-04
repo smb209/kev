@@ -24,12 +24,39 @@ device copy. Kev-27B v2 downloading. No Kev number yet.
 
 ## §3 Closed findings
 
-(none yet)
+- **Kev-27B v2 serves on one DGX Spark in bf16** (E1): 72 GB GPU process, ready in 431 s cold, ~0.31 s for a
+  3-question request on a short repeated state.
+- **Spark bf16 reads equal the H200 release-verify reads within known kernel drift** (E2): flips 0 / 0.26 / 0.14 % on
+  semif-v1 / transfer-v4 / decision-v7 dev, p99 |dp| <= 0.016; decision-v7 clean acc -0.16 pp (2 discordant, p = 0.5).
 
 ## §4 DGX-SPARKS-GUIDE.md verification
 
 | claim (§) | verdict | evidence |
 |---|---|---|
+| §1 GB10, sm_121, driver 580.142, Ubuntu 24.04.4, kernel 6.17.0-1014-nvidia, 20 cores, both boxes | confirmed | nvidia-smi compute_cap 12.1, uname, lsb_release (2026-10-04) |
+| §1 128 GB unified, ~121 GiB in `free` | confirmed | free -g total 121 |
+| §1 root NVMe 3.7 TB, ~1.5 / 1.3 TB free | confirmed | df: 1.5T / 1.3T avail |
+| §1 passwordless sudo; Docker >= 28 + nvidia runtime | confirmed | sudo -n true; Docker 29.2.1; `docker run --gpus all` works |
+| §1 CUDA 13 | confirmed, with a caveat | /usr/local/cuda-13.0 present but **not on PATH** (`nvcc` not found until PATH is set) |
+| §1 LAN / cluster IPs, enP7s7 on VLAN 50 | confirmed | ip -br a: 192.168.50.10/.11, 192.168.201.12/.13 on enP2p1s0f0np0, enP7s7.10 on VLAN 10 |
+| §1 cluster link "MTU 9000" | **partly wrong** | enP2p1s0f0np0 (the interface holding 192.168.201.x) is **MTU 1500**; eth0 (no IPv4) is 9000; RoCE device roceP2p1s0f0 PORT_ACTIVE, active_mtu 1024. NFS/TCP over the cluster IP therefore runs at 1500 |
+| §1 eth0 and enP2p1s0f0np0 "the same physical port" | unverified (plausible) | different MACs (..:9a:37 vs ..:9a:3b): separate PCIe functions; same physical QSFP cannot be checked remotely |
+| §2 SSH config entries | confirmed | ~/.ssh/config |
+| §2 DNS: spark-1 / spark-2 resolve to 192.168.10.30 | **not reproduced** | from the Mac today `host spark-1` = NXDOMAIN (no resolution at all). Conclusion "use the IPs" still holds |
+| §2 no SSH keys between boxes | **wrong (today)** | `ssh -o BatchMode=yes` spark-1 -> 192.168.201.13 and -> 192.168.50.11, and spark-2 -> 192.168.201.12, all succeed |
+| §3 sparkrun at ~/.local/bin, recipes dir, sparks / sparks-ip clusters | confirmed | files present; sparks-ip has scheduler occupancy-sparse |
+| §3 warm-start dirs 0777 per recipe | mostly confirmed | ~/.cache/sparkrun-warm/* drwxrwxrwx, except spark-1 dsv41-exl3 (0775) |
+| §3 "what's running now: GLM-5.3 TP=2, neither box free" | stale (expected) | user stopped it; both boxes ran only vantage-agent / cadvisor / node-exporter |
+| §3 image list | mostly confirmed | images present as listed; `unsloth-dgx-spark` only on spark-2; **nvcr.io/nvidia/pytorch:26.03-py3 is not present on either box** (the ~/finetune Dockerfile names it, so a rebuild pulls ~20 GB) |
+| §4 LiteLLM at 192.168.50.95:4000 | confirmed | /health/liveliness 200 |
+| §5 unified-memory rules | consistent | measured: Kev-27B serve = 77 GB used + 44 GB page cache; page cache counts as "available" but `free` shows 0 GB free |
+| §6 NAS automount, spark2-models NFS mount on spark-1, ~/models symlinks -> /mnt/nas-models | confirmed | mount output; symlinks present. spark-2 also has /mnt/spark2-models as a bind of its own NVMe (harmless) |
+| §6 dq-runs ~584 GB on spark-2 | confirmed | du 584G |
+| §7 ~/finetune Dockerfile FROM pytorch:26.03-py3, docker_memory_gb 100 | confirmed | Dockerfile + config.yaml:322 |
+| §7 TRITON_CACHE_DIR: ~/.triton root-owned | **confirmed, bit us** | ~/.triton owned by root since 2026-03-02; first kev.serve died with PermissionError |
+| §7 spark-2 ~/unsloth compose (8888, host net, ipc host, memlock), notebooks, snappy-agent.yaml on vllm-node-tf5 | confirmed | files |
+| (not in guide) spark-2 cannot git clone from GitHub | new hazard | fetch-pack disconnect, twice; spark-1 clones fine |
+| (not in guide) PyPI aarch64 torch is CPU-only | new | uv.lock's aarch64 torch 2.8 wheel is 101 MB CPU build; use download.pytorch.org cu129 |
 
 ## Pre-registration
 
@@ -117,3 +144,16 @@ a stand-in for it, and a pass means "no evidence the Spark path differs", not eq
   0.103 s/rec (3,136 s / 30,329 records). Projected full epoch ~8.3 h. transformers warns causal_conv1d falls back to
   torch F.conv1d (package not installed; no aarch64 wheel; not in any Spark image checked). Estimated utilization ~5 % of
   85 TFLOPS -> overhead-bound; profile before the full run.
+- 2026-10-04T22:35Z `run` e2-bf16-decision-v7 (837 s): vs rel27-public/2: 1,468 paired (all variants), **2 flips
+  (0.14 %)**, dp max 0.015 / p99 0.009 / median 0.0004. Clean rows (1,264): acc 0.8647 -> 0.8631 (-0.16 pp), 95 % CI
+  [-0.35, 0.00]: two discordant questions, both against the Spark (exact McNemar 2 vs 0, p = 0.5); the bootstrap upper
+  bound touches 0 rather than excluding it. ECE 0.0160 (H200) vs 0.0165.
+- 2026-10-04T22:35Z `finding` **E2 pass: Spark bf16 Kev-27B v2 = H200 within known kernel drift** (pre-registered rule:
+  flips <= 1 % and p99 |dp| <= 0.05 on every suite: 0 / 0.26 / 0.14 % flips, p99 0.008 / 0.016 / 0.009). Kernel set
+  differs from the H200 image (report.json environment: causal_conv1d_fn = transformers torch fallback; delta rule = fla).
+  kev.benchmark per-request latency median 326-334 ms on the Spark vs 113-118 ms on the H200 (benchmark path, not
+  the fused serving path; E3 measures that).
+- 2026-10-04T22:40Z `check` spark/train_fla_conv.py routes transformers' Qwen3.5 causal_conv1d_fn to fla's Triton
+  causal_conv1d for training. vs the torch fallback (B2 D1536 T777, silu): fp32 rel err out 5e-8, dx 7e-8, dw 2e-7;
+  bf16 3e-3 (rounding). Motivation: NVIDIA forum thread cited in spark-1:~/finetune/docker/Dockerfile reports fla +
+  causal-conv1d as the largest single win (~6x) for Qwen3.5 LoRA on GB10 (reference; their numbers, not ours).
