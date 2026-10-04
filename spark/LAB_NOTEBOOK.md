@@ -181,3 +181,8 @@ a stand-in for it, and a pass means "no evidence the Spark path differs", not eq
   H200 bandwidth ratio ~1/21 (224 GB/s vs 4.8 TB/s) matches the observed ~1/24 speed better than the compute ratio
   (~1/12). Recipe-preserving speedups are unlikely; recipe-changing ones (--length_sort, shorter max_state) are E6.
 - 2026-10-05T00:45Z `run` e5-r15-08b-s1 started on spark-2 (full reproduction, spark/e5_train.sh, recipe unchanged).
+- 2026-10-05T01:30Z `run` E4 arm bf16 (kev-spark-quant image, torch 2.13+cu130, benchmark path unfused): vs H200
+  rel27-public: semif 0 flips / 252 (p99 0.008), transfer-v4 2 / 764 (0.26 %, p99 0.013), decision-v7 1 / 1,468 (0.07 %,
+  p99 0.008). The same-env baseline is itself within E2's drift band. Container MemAvailable min 67 GB.
+- 2026-10-05T01:35Z `tool` spark/e4_readout.py (pooled verdict per the E4 pre-registration). Positive control bf16 vs
+  itself: delta 0, CI [0, 0], ECE delta 0, n 2,484 questions in 1,496 (suite, group) clusters.
