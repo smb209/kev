@@ -157,3 +157,27 @@ a stand-in for it, and a pass means "no evidence the Spark path differs", not eq
   causal_conv1d for training. vs the torch fallback (B2 D1536 T777, silu): fp32 rel err out 5e-8, dx 7e-8, dw 2e-7;
   bf16 3e-3 (rounding). Motivation: NVIDIA forum thread cited in spark-1:~/finetune/docker/Dockerfile reports fla +
   causal-conv1d as the largest single win (~6x) for Qwen3.5 LoRA on GB10 (reference; their numbers, not ours).
+- 2026-10-05T00:20Z `run` e5-ab (spark-2, GPU otherwise idle, 40 steps each of the r15-08b config, same seed, back to
+  back): torch conv fallback 1.287 / 1.079 / 0.928 / 0.954 s/rec cumulative at steps 10/20/30/40 (steps 30-40: 1.03
+  s/rec); fla conv (spark/train_fla_conv.py) 2.901 / 2.274 / 1.838 / 1.678 (steps 30-40: 1.20 s/rec, still falling:
+  Triton autotune per new shape). Losses identical to 3 decimals at every logged step.
+- 2026-10-05T00:20Z `finding` (against my hypothesis) **the causal conv fallback is not what makes Spark training slow**:
+  swapping in fla's kernel did not speed up steady-state steps. The forum's ~6x came from a setup without fla's delta
+  rule; ours already binds fla's chunk_gated_delta_rule (report.json environment). Next: profile a step.
+- 2026-10-05T00:40Z `run` e3-serving-27b-bf16 (spark-1, scripts/serving_bench.py --reference none, bf16 fused + CUDA
+  graphs; runs/spark/e3-serving-27b-bf16/report.json) vs runs/fused-27b-h200: load 317 s (H200 19 s), resident 65.5 GB
+  (same), 196 graphs captured, 0 failed. Model latency new / cached state, graphs: 2 q short 588 / 304 ms (H200 40 / 22);
+  6 q short 844 / 554 (66 / 48); 5 q 370-token 995 / 571 (88 / 51); 5 q 2,200-token 2,510 / 693 (268 / 72). Eager is
+  the same within ~5 % (594 / 304 on 2 q). Throughput, decision-v7 dev requests: 1.6 / 2.7 / 3.4 / 3.8 req/s at 1 / 8 /
+  32 / 64 clients (H200 21.6 / 31.7 / 36.4 / 39.7); 2,200-token states 0.4 req/s flat. Graphs vs eager bf16 parity: 1 flip
+  in 280 q, max dp 0.021.
+- 2026-10-05T00:40Z `finding` **bf16 Kev-27B on a Spark is weight-bandwidth bound**, ~10-15x slower than an H200 per
+  request: graphs do not help (not launch bound) and a cached-state request (one pass) takes 304 ms against a floor of
+  51 GB / 224 GB/s = 228 ms; a new state (two passes) 588 ms against 456. Prediction for E4 (not a gate): NVFP4 weights
+  (~14 GB) cut the floor to ~65 ms per pass, so 2-4x faster short requests.
+- 2026-10-05T00:30Z `check` py-spy (30 s, e5 training step) + nvidia-smi: GPU 96 % "utilization" at only 29-33 W;
+  samples spread over Linear forwards (17 % leaf), grad-norm (9 %), checkpoint recompute (19 % incl.), fla delta-rule
+  fwd/bwd (~6 %). No single hotspot. Hypothesis (unproven): small-model LoRA training is memory-bandwidth bound; Spark /
+  H200 bandwidth ratio ~1/21 (224 GB/s vs 4.8 TB/s) matches the observed ~1/24 speed better than the compute ratio
+  (~1/12). Recipe-preserving speedups are unlikely; recipe-changing ones (--length_sort, shorter max_state) are E6.
+- 2026-10-05T00:45Z `run` e5-r15-08b-s1 started on spark-2 (full reproduction, spark/e5_train.sh, recipe unchanged).
