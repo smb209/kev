@@ -1,0 +1,23 @@
+# Kev + FP8 / NVFP4 quantization runtime for the DGX Spark (GB10, sm_121, aarch64).
+#
+# Base: sparkrun-eugr-vllm-tf5 (torch 2.13.0+cu130 built for sm_121, flashinfer 0.6.18, triton 3.7.1, vllm). Nothing here may
+# replace torch / triton / flashinfer: packages that could pull torch go in with --no-deps, the rest under a constraints file
+# that pins every package the base image already has (pip fails instead of swapping one).
+# Kev itself is not installed: run with the repo bind-mounted at /work and PYTHONPATH=/work (see spark/kev_quant.py).
+#
+#   docker build -f spark/Dockerfile.quant -t kev-spark-quant:latest spark/
+FROM sparkrun-eugr-vllm-tf5:latest
+ENV PIP_BREAK_SYSTEM_PACKAGES=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+RUN pip freeze | grep -v -iE '^(transformers|huggingface[-_]hub|tokenizers|safetensors)==' | grep '==' > /tmp/constraints.txt
+# kev needs transformers>=5.17,<6 (the base has 5.15); peft / accelerate / fla import torch but must not install one
+RUN pip install --no-deps "transformers==5.17.*" "peft>=0.21" "accelerate>=1.15" \
+        "flash-linear-attention==0.5.2" "fla-core==0.5.2"
+# pure-python dependencies of the above that the base image may lack, then kev's own runtime deps
+RUN pip install -c /tmp/constraints.txt "huggingface_hub>=1.0,<2" "tokenizers>=0.23.1,<0.24" "safetensors>=0.4.3" \
+        psutil datasets scikit-learn "typesafe-sdk>=0.6.0" httpx
+RUN python3 -c "import torch, transformers, peft, accelerate, fla, flashinfer, datasets, sklearn; \
+print(torch.__version__, transformers.__version__, peft.__version__, fla.__version__, flashinfer.__version__)"
+ENV PYTHONPATH=/work HF_HOME=/hf TRITON_CACHE_DIR=/work/.triton-cache-quant FLASHINFER_WORKSPACE_BASE=/work/.flashinfer-quant
+WORKDIR /work
+ENTRYPOINT []
+CMD ["bash"]

@@ -6,6 +6,6 @@ set -euo pipefail
 name=$1; shift
 exec docker run --rm --name "q-$name" --gpus all --memory=60g --ipc=host \
   -v "$HOME/kev:/work" -v "$HOME/.cache/huggingface:/hf" -e HF_HOME=/hf -e HOME=/tmp \
-  -e TRITON_CACHE_DIR=/work/.triton-cache-quant -e TORCHINDUCTOR_CACHE_DIR=/work/.inductor-cache-quant \
+  -e TRITON_CACHE_DIR=/work/.triton-cache-quant -e TORCHINDUCTOR_CACHE_DIR=/work/.inductor-cache-quant -e FLASHINFER_WORKSPACE_BASE=/work/.flashinfer-quant \
   -e PYTHONPATH=/work -e PYTHONUNBUFFERED=1 -w /work --user "$(id -u):$(id -g)" ${QUANT_DOCKER_FLAGS:-} \
   kev-spark-quant:latest "$@"
