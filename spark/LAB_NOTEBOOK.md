@@ -480,3 +480,37 @@ still differ: not removable here; stated). Activations: dynamic per-token scales
 - 2026-10-06T02:00Z `finding` (pending review) **E10: FP8 Clef-Flash (11.3 GiB) loses no accuracy beyond 0.18 pp vs
   bf16 on 5,697 questions, and fits a 15 GiB cap at 16k-token states (with expandable_segments).** Not covered: the
   real Ada kernels (user's step: spark/ada_validate.md), images / video, states > 16,384 tokens.
+- 2026-10-06T03:00Z `review` adversarial review of the E10 claim (subagent): accuracy half confirmed (independent
+  bootstrap [-0.19, +0.33] by group, [-0.18, +0.32] by id / row; clean-only +0.04 pp [-0.22, +0.30]; the pooled set
+  includes 312 permuted / none-pair rows, 5.5 %); quantization verifiably applied. Accepted:
+  (a) **"fits a 16 GB Ada card" withdrawn as a result**: set_per_process_memory_fraction caps only PyTorch's
+  allocator, on unified memory; CUDA context (~0.3-0.8 GB), Triton / fla code memory and other processes on the card
+  (the user's embedding models share these GPUs) are outside it. Correct statement: allocator peak 13.56 / 13.66 GiB
+  at 16,384 tokens with expandable_segments under a 15.0 GiB cap; plausible on an otherwise empty 16 GB card; not run
+  on Ada. Memory JSON now committed (runs/spark/e10/c10/).
+  (b) portability risk: `_scaled_mm(..., out_dtype=float32)` on sm_89 is unverified. Fixed robustly: clef_fp8
+  probes the output dtype once per device (fp32, else bf16-output fallback; FP8_GEMM_OUT forces), and clef_server
+  reports it in /v1/models. E10b (running) re-reads default mode (must reproduce E10 rows) and the forced bf16-out
+  fallback on all three suites, so either Ada outcome has a measured accuracy.
+  (c) no latency gain: medians mixed, p95 worse on breadth-v1 (604 vs 453 ms) and decision-v7 (743 vs 547).
+- 2026-10-06T03:00Z `finding` (revised; supersedes 02:00Z) **E10: FP8 Clef-Flash (11.3 GiB) shows no accuracy loss beyond
+  0.18 pp vs bf16 on 5,697 questions (+0.07 pp [-0.18, +0.32]); allocator peak 13.7 GiB at 16k tokens; fit on a real
+  16 GB Ada card plausible if the card is otherwise empty, untested; no speed gain.**
+- 2026-10-06T03:30Z `reference` user asked about PrismaQuant (github.com/RobTand/prismaquant) and their overbook work.
+  overbook (explorer): a vLLM plugin paging MoE routed experts between VRAM and host (expertpager); no quantizer, no
+  Linear kernels, nothing for a dense model; its dequant kernels live in gridbook (FP8 / FP4 codebook, sm_120-first).
+  PrismaQuant (README): AURA per-Linear mixed-precision allocation (KL-Fisher sensitivity + production-rendered error,
+  knapsack, held-out KL gate); exports compressed-tensors (NVFP4 / FP8 / BF16), GGUF, Tessera; served by vLLM or
+  llama.cpp. For Clef-Flash on Ada: NVFP4 not native on sm_89, and neither vLLM nor llama.cpp serves Clef's joint head,
+  so usable = its allocation idea + an Ada-native 4-bit weight kernel (W4A16), scored on Clef's option probabilities.
+- 2026-10-06T03:30Z `check` FP8 Clef-Flash memory composition (from the export report): FP8 decoder 6.91 B params (6.4
+  GiB), embed_tokens + lm_head bf16 2.03 B (3.8 GiB), vision tower 0.46 B (0.85 GiB), joint head + small 0.13 B
+  (0.25 GiB). Clef's ClefModel.forward passes `get_output_embeddings().weight` to the head, which only gathers rows
+  (`output_embedding_weight[token_ids]`, joint_schema_model.py:382); embed_tokens is a gather too. Neither needs a GEMM.
+
+**E11a host-resident embeddings + text-only load (planned 2026-10-06T03:30Z, before implementation).** Keep embed_tokens
+and lm_head in pinned CPU memory, gather the needed rows on the CPU and copy them to the GPU; do not load the vision
+tower (text-only server; requests with images / videos get a 422). Expected GPU weights ~6.9 GiB. Arithmetic unchanged,
+so **pre-registered expectation: probabilities bit-identical to the E10 FP8 export on transfer-v9 dev (0 flips, max
+dp 0)**; any difference is a bug, not a result. Also: memtest at the same 15.0 GiB cap (peak at 16k tokens) and the
+added latency of CPU gathers (median / p95 vs E10 FP8 on transfer-v9).
