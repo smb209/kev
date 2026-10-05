@@ -11,10 +11,10 @@ run() {  # name port extra-args...
     --kv-cache-memory-bytes 4294967296 --host 127.0.0.1 --port $port "$@" > /dev/null
   until curl -s -m 3 localhost:$port/v1/models >/dev/null; do
     if ! docker ps --format "{{.Names}}" | grep -q "^$name$"; then echo "$name died"; docker logs $name > $out/$name.log 2>&1; docker rm $name >/dev/null; return 1; fi; sleep 5; done
-  python3 spark/e12_quality.py dump --url http://127.0.0.1:$port --docs $out/docs.json --out $out/$name.npz >> $out/quality.log 2>&1 || echo "dump $name failed"
+  .venv-spark/bin/python spark/e12_quality.py dump --url http://127.0.0.1:$port --docs $out/docs.json --out $out/$name.npz >> $out/quality.log 2>&1 || echo "dump $name failed"
   docker logs $name > $out/$name.log 2>&1; docker stop $name >/dev/null; docker rm $name >/dev/null
 }
 run q-bf16 8052 || exit 1
 run q-fp8 8051 --quantization fp8 --kv-cache-dtype fp8 || exit 1
-python3 spark/e12_quality.py compare --ref $out/q-bf16.npz --cand $out/q-fp8.npz --out $out/quality.json >> $out/quality.log 2>&1 || echo "compare failed"
+.venv-spark/bin/python spark/e12_quality.py compare --ref $out/q-bf16.npz --cand $out/q-fp8.npz --out $out/quality.json >> $out/quality.log 2>&1 || echo "compare failed"
 echo QDONE
