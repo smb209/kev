@@ -442,3 +442,22 @@ pushed; only aggregate reports are committed. Development partition only (test i
   0.6995 = 0.6995, 0 rejected / truncated. The remote harness (api_request -> /v1/systemone -> RemotePredictor) carries
   the same information and maps probabilities faithfully. Clef's own encode path (clef_server.py) is not covered by this
   control; its 0 rejections and high accuracy rule out gross mapping errors.
+
+**E10 FP8 Clef-Flash for a 16 GB Ada GPU (pre-registered 2026-10-05T23:00Z, before any quantized Clef read).** Target:
+the user's 16 GB Ada card (sm_89: FP8 tensor cores, no FP4). Deliverable: a pre-quantized export (safetensors: FP8 e4m3
+decoder Linear weights + fp32 per-output-channel scales; embeddings, norms, vision tower, small projections and the
+joint head stay bf16) and a loader that builds Clef-Flash without materialising bf16 weights on the GPU. FP8 arithmetic
+in a portable form that runs on sm_89 and sm_121 alike (scaled_mm with tensorwise scales of 1 on e4m3 operands, then
+per-token x per-channel rescale in fp32), so the Spark read is the arithmetic the Ada card runs (kernel choice may
+still differ: not removable here; stated). Activations: dynamic per-token scales (row-independent, no batch coupling).
+- Arms: Clef-Flash bf16 (E8 / E9 rows: same image, same clef_server path) vs Clef-Flash FP8 loaded from the export.
+- Reads: transfer-v9 dev, breadth-v1 dev, decision-v7 dev (all rows; the breadth / v7 / v9 sets as in E8 / E9; for
+  transfer-v9 the accuracy set excludes unknowable rows, the E8 correction).
+- **Primary: pooled accuracy delta FP8 - bf16 over the three suites, record-clustered bootstrap**; claim rule =
+  resolution: "no loss beyond X pp", X = -(CI lower bound). Per-suite deltas and flips as context. ECE reported, not
+  judged (E4 lesson: ~0.012 noise floor at this n).
+- **Memory (gate for the deployment claim):** with torch.cuda.set_per_process_memory_fraction set to 15.0 GiB of the
+  Spark's pool (headroom for the CUDA context on a 16 GB card), the export loads and answers (a) the longest breadth-v1
+  record and (b) a synthetic 16,384-token-state request without OOM. Report weights GiB, peak GiB at each.
+- Not covered and stated: kernels on the real Ada card (an Ada validation read is the user's step; a script ships),
+  states beyond 16,384 tokens, image / video inputs (not read in E8 / E9 either).
