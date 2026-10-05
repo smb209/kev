@@ -608,3 +608,10 @@ max_model_len 8192, KV pinned with --kv-cache-memory-bytes, max_num_seqs small) 
   two concurrent embed streams and 10-question Clef requests.** Feasible but tight on a 16 GB card (0.36 GiB under the
   15.0 bar); not run on Ada. Open: embedding quality under FP8 KV with unit scales (vLLM warned "KV cache scaling factor
   1.0"); measuring now (E12 context item, pre-registered and not yet reported).
+- 2026-10-06T13:45Z `decision` read rule for the E12 quality check (written before its data; the pre-registration
+  named it context, without a threshold; expanded to 300 documents-v1 states plus retrieval agreement before any data).
+  Compare Qwen3-Embedding-4B FP8 weights + FP8 KV (unit scale) against bf16: per-document cosine and, with each
+  document's first 300 characters as a query, top-1 and top-10 retrieval agreement. **Harmless at this resolution** =
+  median cosine >= 0.99 AND top-1 agreement >= 95 %. Otherwise: recommend FP8 weights with bf16 KV, which pins
+  ~2.5 GiB of KV instead of 1.25 and breaks the 15.0 GiB co-residency bar (~15.8 GiB), so the plan would need 4k chunks
+  or a 1-sequence KV pin instead (to be re-measured, not assumed).
