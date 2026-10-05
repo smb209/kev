@@ -1,0 +1,91 @@
+{
+ "environment": {
+  "torch": "2.13.0+cu130",
+  "transformers": "5.17.0",
+  "safetensors": "0.8.0",
+  "gpu": "NVIDIA GB10",
+  "capability": "12.1"
+ },
+ "cases": [
+  {
+   "m": 2,
+   "k": 4096,
+   "n": 4096,
+   "bias": false,
+   "portable_vs_rowwise_bf16_max_rel": 1.3341017393031507e-06,
+   "bitwise_equal_bf16": false,
+   "frac_bf16_equal": 0.9998779296875,
+   "portable_fp32_vs_fp64_dequant_max_rel": 3.1198122465003247e-07,
+   "rowwise_bf16_vs_fp64_dequant_max_rel": 0.002607852439420877
+  },
+  {
+   "m": 14,
+   "k": 4096,
+   "n": 12288,
+   "bias": false,
+   "portable_vs_rowwise_bf16_max_rel": 0.0,
+   "bitwise_equal_bf16": true,
+   "frac_bf16_equal": 1.0,
+   "portable_fp32_vs_fp64_dequant_max_rel": 8.570703632446714e-07,
+   "rowwise_bf16_vs_fp64_dequant_max_rel": 0.002309238063690204
+  },
+  {
+   "m": 600,
+   "k": 12288,
+   "n": 4096,
+   "bias": true,
+   "portable_vs_rowwise_bf16_max_rel": 0.00671140942722559,
+   "bitwise_equal_bf16": false,
+   "frac_bf16_equal": 0.7356868386268616,
+   "portable_fp32_vs_fp64_dequant_max_rel": 2.9058283834110947e-06,
+   "rowwise_bf16_vs_fp64_dequant_max_rel": 0.003672244518394301
+  },
+  {
+   "m": 4096,
+   "k": 4096,
+   "n": 8192,
+   "bias": false,
+   "portable_vs_rowwise_bf16_max_rel": 0.0,
+   "bitwise_equal_bf16": true,
+   "frac_bf16_equal": 1.0,
+   "portable_fp32_vs_fp64_dequant_max_rel": 5.845618937118853e-07,
+   "rowwise_bf16_vs_fp64_dequant_max_rel": 0.0031001294717286593
+  },
+  {
+   "m": 66,
+   "k": 1024,
+   "n": 2048,
+   "bias": true,
+   "portable_vs_rowwise_bf16_max_rel": 0.003816793905571103,
+   "bitwise_equal_bf16": false,
+   "frac_bf16_equal": 0.7211692333221436,
+   "portable_fp32_vs_fp64_dequant_max_rel": 6.024697704968317e-07,
+   "rowwise_bf16_vs_fp64_dequant_max_rel": 0.003241743606254529
+  },
+  {
+   "m": 10,
+   "k": 4096,
+   "n": 6144,
+   "bias": false,
+   "portable_vs_rowwise_bf16_max_rel": 0.0,
+   "bitwise_equal_bf16": true,
+   "frac_bf16_equal": 1.0,
+   "portable_fp32_vs_fp64_dequant_max_rel": 4.400283534792114e-07,
+   "rowwise_bf16_vs_fp64_dequant_max_rel": 0.002202087086951008
+  },
+  {
+   "m": 5200,
+   "k": 12288,
+   "n": 4096,
+   "bias": false,
+   "portable_vs_rowwise_bf16_max_rel": 0.0,
+   "bitwise_equal_bf16": true,
+   "frac_bf16_equal": 1.0,
+   "portable_fp32_vs_fp64_dequant_max_rel": 2.1555896376502314e-06,
+   "rowwise_bf16_vs_fp64_dequant_max_rel": 0.001937023700676667
+  }
+ ],
+ "chunked_quant_equal": true,
+ "max_portable_vs_rowwise_rel": 0.00671140942722559,
+ "max_portable_fp32_vs_fp64_rel": 2.9058283834110947e-06
+}

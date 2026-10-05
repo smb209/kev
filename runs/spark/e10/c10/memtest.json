@@ -1,0 +1,53 @@
+{
+ "cap_gib": 15.0,
+ "device_total_gib": 121.69,
+ "fraction": 0.12326386292913992,
+ "environment": {
+  "torch": "2.13.0+cu130",
+  "transformers": "5.17.0",
+  "safetensors": "0.8.0",
+  "gpu": "NVIDIA GB10",
+  "capability": "12.1"
+ },
+ "load": {
+  "fit": true,
+  "seconds": 2.7,
+  "allocated_gib": 11.332,
+  "peak_gib": 11.332
+ },
+ "weights_gib": 11.332,
+ "a_breadth_longest": {
+  "source": "load_split",
+  "records": 1990,
+  "record_index": 1376,
+  "record_id": null,
+  "encoded_tokens": 6587,
+  "fit": true,
+  "input_tokens": 6587,
+  "answers": {
+   "nda-11": "not_mentioned",
+   "nda-17": "entailment",
+   "nda-3": "entailment",
+   "nda-4": "entailment"
+  },
+  "seconds": 3.86,
+  "allocated_before_gib": 11.332,
+  "peak_allocated_gib": 12.252,
+  "peak_reserved_gib": 12.883
+ },
+ "b_synthetic": {
+  "state_tokens": 16641,
+  "fit": true,
+  "input_tokens": 16384,
+  "answers": {
+   "damaged": "true",
+   "team": "accounts",
+   "load": "2"
+  },
+  "seconds": 7.63,
+  "allocated_before_gib": 11.364,
+  "peak_allocated_gib": 13.566,
+  "peak_reserved_gib": 14.971
+ },
+ "fit": true
+}

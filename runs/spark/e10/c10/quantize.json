@@ -1,0 +1,55 @@
+{
+ "quantize": {
+  "coverage": {
+   "fp8": {
+    "count": 200,
+    "params": 6912212992,
+    "share": 0.9991
+   },
+   "bf16": {
+    "count": 48,
+    "params": 6291456,
+    "share": 0.0009
+   }
+  },
+  "projection_params": 6918504448,
+  "fallbacks": {
+   "model.language_model.layers.*.linear_attn.in_proj_b  (small (32x4096 < 1024))": 24,
+   "model.language_model.layers.*.linear_attn.in_proj_a  (small (32x4096 < 1024))": 24
+  },
+  "model_params": {
+   "decoder/bfloat16": 7348736,
+   "decoder/float32": 1425408,
+   "decoder/float8_e4m3fn": 6912212992,
+   "embed/lm_head/bfloat16": 2034237440,
+   "joint_head/bfloat16": 121762820,
+   "other/bfloat16": 4096,
+   "vision/bfloat16": 456010480
+  },
+  "min_dim": 1024,
+  "seconds": 5.0,
+  "memory": {
+   "allocated_before_gib": 17.754,
+   "allocated_after_gib": 11.322,
+   "peak_during_gib": 18.332
+  }
+ },
+ "export": {
+  "dir": "runs/spark/c10-clef-flash-fp8",
+  "shards": 3,
+  "tensor_gib": 11.095,
+  "disk_gib": 11.341,
+  "tied": {}
+ },
+ "verify_reload": {
+  "tensors": 1086,
+  "differ": [],
+  "n_differ": 0,
+  "extra": [],
+  "load": {
+   "seconds": 2.5,
+   "allocated_gib": 11.323,
+   "peak_gib": 11.323
+  }
+ }
+}
