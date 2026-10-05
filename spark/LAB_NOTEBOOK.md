@@ -218,3 +218,14 @@ kev.fused_qwen35 (the kernels kev.serve runs; CUDA graphs only replay the same a
 same image, same three suites, all variants. Primary: pooled acc delta nvfp4-fused vs bf16-fused, with its CI. Claim
 rule, stated as resolution not as a gate: report the interval; "no loss beyond X pp" with X = -(CI lower bound). Also
 report nvfp4-fused vs nvfp4-unfused flips (does fusion change the quantized answers?). ECE reported, not judged.
+- 2026-10-05T04:30Z `run` e4-serving-27b-{nvfp4,nvfp4-mlp} (spark-1, scripts/serving_bench.py through
+  spark/quant_serving_bench.py, fused + CUDA graphs, static act scales; compare runs/spark/e3-serving-27b-bf16):
+  resident 30.6 / 33.8 GB (bf16 65.5); load 384 / 406 s; 198 graphs, 0 failed. Model latency new / cached, NVFP4: 2 q
+  short 168 / 91 ms (bf16 588 / 304: 3.5x / 3.4x); 6 q short 274 / 192 (3.1x / 2.9x); 5 q 370-token 349 / 208 (2.9x /
+  2.8x); 5 q 2,200-token 1,172 / 328 (2.1x / 2.1x). NVFP4-MLP: 204 / 110, 323 / 222, 405 / 239, 1,338 / 361.
+  Throughput decision-v7 requests at 1 / 8 / 32 / 64 clients: NVFP4 5.3 / 8.0 / 9.4 / 10.3 req/s; NVFP4-MLP 4.4 / 6.8 /
+  8.0 / 8.8; bf16 1.6 / 2.7 / 3.4 / 3.8. 2,200-token states: 0.9 / 0.8 / 0.4 req/s.
+  Graphs vs eager (same scheme): NVFP4 max dp 0.189, mean 0.016, 1 flip / 280 q; NVFP4-MLP 0.203 / 0.014 / 5 flips;
+  bf16 0.021 / 0.0014 / 1 flip. Under FP4 the bucket padding of the graph path moves answers ~10x more than in bf16
+  (same mechanism as the isolation check: batch-shape bf16 noise amplified by FP4 rounding). E4b reads the fused path
+  without graphs; this graph-vs-eager spread is an additional serving-path noise term it does not cover.
