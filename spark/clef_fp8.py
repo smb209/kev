@@ -19,6 +19,13 @@ shards straight to the GPU, so loading never holds bf16 decoder weights.
     python spark/clef_fp8.py check    --export runs/spark/c10-clef-flash-fp8 --out runs/spark/c10/check.json
     python spark/clef_fp8.py memtest  --export runs/spark/c10-clef-flash-fp8 --cap-gib 15.0 --out runs/spark/c10/memtest.json
 
+E11a: load_fp8(..., host_embeddings=True, text_only=True) keeps the input embedding and the output embedding (lm_head) in pinned
+CPU memory (bf16, gathered rows copied to the GPU; both are only ever row gathers) and never materialises the vision tower
+(left on the meta device; text-only requests never reach it). Same bits, about 4.7 GiB less GPU memory.
+
+    python spark/clef_fp8.py identity --export runs/spark/c10-clef-flash-fp8 --out runs/spark/c11a/identity.json
+    python spark/clef_fp8.py memtest  --export ... --host-embeddings 1 --text-only 1 --cap-gib 15.0 --out ...
+
 Serving needs only this file, spark/clef_server.py and the export (no `kev` package): clef_server.py --fp8-export DIR.
 check / memtest / selftest import kev (suites, kev_quant) and are meant for the Spark.
 """
@@ -387,6 +394,59 @@ def environment():
             "capability": ".".join(map(str, torch.cuda.get_device_capability(0))) if torch.cuda.is_available() else None}
 
 
+# --- host-resident embeddings (E11a) --------------------------------------------------------------------------------------
+
+class HostGather:
+    """A bf16 [V, D] weight in pinned CPU memory that answers `w[ids]` (ids on any device) with the rows on `device`:
+    gather on the CPU, copy to the GPU. A pure copy of rows, so the values equal a GPU gather of the same weight."""
+
+    def __init__(self, weight, device):
+        w = weight.detach().to("cpu")
+        self.weight = w.pin_memory() if torch.cuda.is_available() else w
+        self.device = torch.device(device)
+        self.dtype, self.shape = w.dtype, w.shape
+
+    def __getitem__(self, ids):
+        rows = self.weight.index_select(0, ids.reshape(-1).cpu()).view(*ids.shape, self.shape[1])
+        return rows.to(self.device, non_blocking=True)
+
+    def __len__(self): return self.shape[0]
+
+    def size(self, *a): return self.shape[a[0]] if a else self.shape
+
+    @property
+    def ndim(self): return len(self.shape)
+
+
+class HostEmbedding(nn.Module):
+    """Drop-in for the text model's embed_tokens: forward(ids) = the rows of a host-resident weight, on the ids' device."""
+
+    def __init__(self, gather):
+        super().__init__()
+        self.gather = gather
+        self.num_embeddings, self.embedding_dim = gather.shape
+
+    def forward(self, ids):
+        return self.gather[ids]
+
+
+class HostOutputEmbedding(nn.Module):
+    """Stands in for lm_head: Clef reads only `get_output_embeddings().weight[token_ids]` (JointSchemaHead.forward), so
+    `weight` is a HostGather. Calling it as a Linear is not supported (Clef never does)."""
+
+    def __init__(self, gather):
+        super().__init__()
+        self.weight = gather
+        self.in_features, self.out_features = gather.shape[1], gather.shape[0]
+
+    def forward(self, x):
+        raise NotImplementedError("lm_head is host-resident (row gathers only); it cannot be applied as a Linear")
+
+
+def _is_vision(name):
+    return ".visual." in name or name.startswith("visual.") or name.startswith("model.visual")
+
+
 # --- load -----------------------------------------------------------------------------------------------------------------
 
 @contextlib.contextmanager
@@ -418,10 +478,12 @@ def _assign(root, name, tensor):
 
 
 @torch.no_grad()
-def load_fp8(export_dir, device="cuda", verbose=True):
+def load_fp8(export_dir, device="cuda", verbose=True, host_embeddings=False, text_only=False):
     """Build Clef from an export: backbone on meta, target Linears swapped for PortableFp8Linear shells, every tensor of the
     shards assigned straight onto `device`, JointSchemaHead from the release's class. -> (ClefModel, processor), as
-    load_release_model returns. Peak GPU memory during the load stays at the final size (one tensor in flight)."""
+    load_release_model returns. Peak GPU memory during the load stays at the final size (one tensor in flight).
+    host_embeddings: embed_tokens and the output embedding stay bf16 in pinned CPU memory (HostEmbedding / HostOutputEmbedding),
+    never on the GPU. text_only: the vision tower is not loaded (its tensors stay on meta); the caller must not send media."""
     from safetensors import safe_open
     from safetensors.torch import load_file
     from transformers import AutoConfig, AutoProcessor, Qwen3_5ForConditionalGeneration
@@ -454,20 +516,44 @@ def load_fp8(export_dir, device="cuda", verbose=True):
     files = {}
     for k, f in index["weight_map"].items(): files.setdefault(f, []).append(k)
     expected = {k for k, _ in backbone.state_dict().items()}
-    loaded = set()
+    if text_only: expected = {k for k in expected if not _is_vision(k)}
+    host_keys = set()
+    if host_embeddings:
+        out_emb = backbone.get_output_embeddings()
+        out_name = next(n for n, m in backbone.named_modules() if m is out_emb) + ".weight"
+        host_keys = {prefix + "embed_tokens.weight", out_name}
+    host, loaded = {}, set()
     for f, keys in files.items():
-        with safe_open(str(export_dir / f), framework="pt", device=str(dev)) as sf:
+        with safe_open(str(export_dir / f), framework="pt", device=str(dev)) as sf, \
+             safe_open(str(export_dir / f), framework="pt", device="cpu") as sc:
             for k in keys:
-                _assign(backbone, k, sf.get_tensor(k)); loaded.add(k)
+                if text_only and _is_vision(k): continue
+                if k in host_keys:
+                    host[k] = HostGather(sc.get_tensor(k), dev); loaded.add(k)
+                else:
+                    _assign(backbone, k, sf.get_tensor(k)); loaded.add(k)
     for name, src in cfg.get("tied", {}).items():
-        _assign(backbone, name, backbone.get_parameter(src) if src in dict(backbone.named_parameters()) else backbone.get_buffer(src))
+        if text_only and _is_vision(name): continue
+        if name in host_keys and src in host: host[name] = host[src]
+        else: _assign(backbone, name, backbone.get_parameter(src) if src in dict(backbone.named_parameters()) else backbone.get_buffer(src))
         loaded.add(name)
     missing = expected - loaded
     if missing: raise SystemExit(f"{len(missing)} tensors missing from the export, e.g. {sorted(missing)[:5]}")
-    backbone.to(dev)       # the CPU buffers (rotary inv_freq); every weight is already there
-    meta = [n for n, t in list(backbone.named_parameters()) + list(backbone.named_buffers()) if t is not None and t.device.type == "meta"]
+    if host_embeddings:
+        if set(host) != host_keys: raise SystemExit(f"host tensors {sorted(host)} != {sorted(host_keys)}")
+        tm.embed_tokens = HostEmbedding(host[prefix + "embed_tokens.weight"])
+        backbone.lm_head = HostOutputEmbedding(host[out_name])
+    if text_only:       # backbone.to() cannot move meta tensors: move only the CPU buffers (rotary inv_freq) outside the vision tower
+        for name, mod in backbone.named_modules():
+            if _is_vision(name + "."): continue
+            for bk, bv in list(mod._buffers.items()):
+                if bv is not None and bv.device.type == "cpu": mod._buffers[bk] = bv.to(dev)
+    else:
+        backbone.to(dev)       # the CPU buffers (rotary inv_freq); every weight is already there
+    meta = [n for n, t in list(backbone.named_parameters()) + list(backbone.named_buffers())
+            if t is not None and t.device.type == "meta" and not (text_only and _is_vision(n))]
     if meta: raise SystemExit(f"tensors left on meta after the load: {meta[:5]}")
-    if getattr(config, "tie_word_embeddings", False) or getattr(getattr(config, "text_config", None), "tie_word_embeddings", False):
+    if not host_embeddings and (getattr(config, "tie_word_embeddings", False) or getattr(getattr(config, "text_config", None), "tie_word_embeddings", False)):
         backbone.tie_weights()
     head_config = json.loads((export_dir / "joint_head_config.json").read_text())
     with params_on_meta():
@@ -482,7 +568,7 @@ def load_fp8(export_dir, device="cuda", verbose=True):
         stats = {"allocated_gib": gib(torch.cuda.memory_allocated(dev) - before), "peak_gib": gib(torch.cuda.max_memory_allocated(dev) - before)}
     else:
         stats = {}
-    model.load_stats = {"seconds": round(time.time() - t0, 1), **stats}
+    model.load_stats = {"host_embeddings": host_embeddings, "text_only": text_only, "seconds": round(time.time() - t0, 1), **stats}
     if verbose: print(f"[clef_fp8] loaded {export_dir} in {model.load_stats['seconds']} s: {stats}", flush=True)
     return model, processor
 
@@ -625,6 +711,37 @@ def cmd_check(a):
     _write(a.out, res)
 
 
+def cmd_identity(a):
+    """E11a: probabilities of load_fp8(host_embeddings, text_only) vs the plain FP8 load on the same records, per question."""
+    bodies = _transfer_records(a.n)
+    bodies = [b for b in bodies if not (b.get("images") or b.get("videos"))] if a.text_only else bodies
+
+    def run(**kw):
+        model, processor = load_fp8(a.export, **kw)
+        jsm = sys.modules["joint_schema_model"]
+        out = [probabilities(jsm, model, processor, body)[1] for body in bodies]
+        stats = {"allocated_gib": gib(torch.cuda.memory_allocated()), "peak_gib": gib(torch.cuda.max_memory_allocated()), "load": model.load_stats}
+        del model, processor
+        gc.collect(); torch.cuda.empty_cache(); _sync()
+        return out, stats
+
+    base, base_stats = run()
+    print(f"[identity] plain fp8 {base_stats}", flush=True)
+    var, var_stats = run(host_embeddings=bool(a.host_embeddings), text_only=bool(a.text_only))
+    print(f"[identity] variant {var_stats}", flush=True)
+    dps, rows, bad_rows = [], [], 0
+    for i, (pb, pv) in enumerate(zip(base, var)):
+        for qid in pb:
+            dp = max(abs(pb[qid][o] - pv[qid][o]) for o in pb[qid])
+            same = all(pb[qid][o] == pv[qid][o] for o in pb[qid])
+            bad_rows += not same; dps.append(dp)
+            rows.append({"record": i, "question": qid, "max_abs_dp": dp, "identical": same})
+    res = {"records": len(bodies), "questions": len(dps), "host_embeddings": bool(a.host_embeddings), "text_only": bool(a.text_only),
+           "max_abs_dp": max(dps), "non_identical_questions": bad_rows, "plain": base_stats, "variant": var_stats, "rows": rows}
+    print(f"[identity] {len(dps)} questions over {len(bodies)} records: max |dp| {max(dps)}, non-identical {bad_rows}", flush=True)
+    _write(a.out, res)
+
+
 def _synthetic_state(tokenizer, target):
     """A deterministic support-ticket log of at least `target` tokens (state only), plus 3 questions."""
     parts, i = [], 0
@@ -665,9 +782,10 @@ def cmd_memtest(a):
     frac = a.cap_gib * 2**30 / total
     torch.cuda.set_per_process_memory_fraction(frac, dev)
     print(f"[memtest] cap {a.cap_gib} GiB of {gib(total)} GiB (fraction {frac:.4f})", flush=True)
-    res = {"cap_gib": a.cap_gib, "device_total_gib": gib(total), "fraction": frac, "environment": environment()}
+    res = {"host_embeddings": bool(a.host_embeddings), "text_only": bool(a.text_only),
+           "cap_gib": a.cap_gib, "device_total_gib": gib(total), "fraction": frac, "environment": environment()}
     try:
-        model, processor = load_fp8(a.export)
+        model, processor = load_fp8(a.export, host_embeddings=bool(a.host_embeddings), text_only=bool(a.text_only))
     except torch.OutOfMemoryError as e:
         res["load"] = {"fit": False, "error": str(e).splitlines()[0]}
         _write(a.out, res); return
@@ -723,8 +841,11 @@ def main(argv=None):
     s.add_argument("--repo", default=REPO); s.add_argument("--revision", default=REVISION)
     s = sub.add_parser("memtest"); s.add_argument("--export", required=True); s.add_argument("--out")
     s.add_argument("--cap-gib", type=float, default=15.0); s.add_argument("--state-tokens", type=int, default=16384)
+    s.add_argument("--host-embeddings", type=int, default=0); s.add_argument("--text-only", type=int, default=0)
+    s = sub.add_parser("identity"); s.add_argument("--export", required=True); s.add_argument("--out"); s.add_argument("--n", type=int, default=50)
+    s.add_argument("--host-embeddings", type=int, default=1); s.add_argument("--text-only", type=int, default=1)
     a = ap.parse_args(argv)
-    {"selftest": cmd_selftest, "quantize": cmd_quantize, "check": cmd_check, "memtest": cmd_memtest}[a.cmd](a)
+    {"selftest": cmd_selftest, "quantize": cmd_quantize, "check": cmd_check, "memtest": cmd_memtest, "identity": cmd_identity}[a.cmd](a)
 
 
 if __name__ == "__main__":

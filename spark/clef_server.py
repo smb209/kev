@@ -12,6 +12,9 @@ load_release_model; the release code comes from the export's copy (same sha256 g
 export's source and must match it when given. Everything after the load is the same.
 
     python spark/clef_server.py --fp8-export runs/spark/c10-clef-flash-fp8 --port 8031
+
+E11a: --host-embeddings keeps embed_tokens and the output embedding in pinned CPU memory, --text-only skips the vision tower
+(and answers 422 to requests with images / videos); same probabilities, about 4.7 GiB less GPU memory.
 """
 import argparse, hashlib, importlib.util, sys, threading, time
 from pathlib import Path
@@ -27,10 +30,13 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--repo")
 ap.add_argument("--revision")
 ap.add_argument("--fp8-export", help="a spark/clef_fp8.py export directory: serve it instead of the bf16 release")
+ap.add_argument("--host-embeddings", action="store_true", help="with --fp8-export: embeddings stay in pinned CPU memory (about 3.8 GiB less GPU memory)")
+ap.add_argument("--text-only", action="store_true", help="with --fp8-export: do not load the vision tower; requests with images / videos get a 422")
 ap.add_argument("--host", default="127.0.0.1")
 ap.add_argument("--port", type=int, default=8031)
 ap.add_argument("--max_length", type=int, default=16384)
 a = ap.parse_args()
+if (a.host_embeddings or a.text_only) and not a.fp8_export: raise SystemExit("--host-embeddings / --text-only need --fp8-export")
 dtype = "bfloat16"
 
 if a.fp8_export:
@@ -57,7 +63,9 @@ jsm = importlib.util.module_from_spec(spec); sys.modules["joint_schema_model"] =
 
 t0 = time.time()
 if a.fp8_export:
-    model, processor = clef_fp8.load_fp8(path, device="cuda")
+    model, processor = clef_fp8.load_fp8(path, device="cuda", host_embeddings=a.host_embeddings, text_only=a.text_only)
+    if a.host_embeddings: dtype += ", host-resident embeddings"
+    if a.text_only: dtype += ", text-only (no vision tower)"
     dtype += f", fp8 GEMM output {str(clef_fp8.gemm_out_dtype(torch.device('cuda'))).replace('torch.', '')}"   # float32 = the E10-read arithmetic
 else:
     model, processor = jsm.load_release_model(path, device="cuda")
@@ -77,6 +85,8 @@ async def systemone(request: Request):
     questions = body.get("questions")
     if "state" not in body or not isinstance(questions, dict) or not questions:
         raise HTTPException(422, "state and at least one question are required")
+    if a.text_only and (body.get("images") or body.get("videos")):
+        raise HTTPException(422, "this server runs with --text-only (no vision tower): requests with images or videos are not supported")
     with lock:
         start = time.perf_counter()
         try:

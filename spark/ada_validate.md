@@ -63,6 +63,22 @@ PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 #           loaded Cloudflare/clef-flash@17f0b0ad (fp8-e4m3 decoder projections + bfloat16) ...
 ```
 
+**Recommended on a 16 GB card, text-only requests (E11a):** add `--host-embeddings --text-only`.
+
+```bash
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+  python spark/clef_server.py --fp8-export c10-clef-flash-fp8 --host-embeddings --text-only --host 127.0.0.1 --port 8031
+#   expect: [clef_fp8] loaded c10-clef-flash-fp8 in ~3 s: {'allocated_gib': 6.68, 'peak_gib': 6.68}
+```
+
+`--host-embeddings` keeps the input embedding and the output embedding (bf16, 3.8 GiB) in pinned CPU memory and copies only
+the gathered rows to the GPU; `--text-only` does not load the vision tower (0.85 GiB) and answers HTTP 422 to a request with
+`images` or `videos`. The arithmetic is unchanged: on the Spark the probabilities were bit-identical to the plain export's on
+50 transfer-v9 development records. GPU allocator memory: weights 6.68 GiB (plain 11.32), peak 7.60 GiB at the longest
+breadth-v1 record (6,587 tokens) and 8.92 GiB at a 16,384-token request (plain 12.24 and 13.56), so the allocator needs well
+under half of a 16 GB card. The host needs about 4 GiB of pinned memory. What the CPU gathers cost in latency is in
+`runs/spark/c11a/` (LAB_NOTEBOOK E11a). Use the plain command above only if you need images or videos.
+
 `expandable_segments` matters at long inputs. Under a 15.0 GiB cap on the Spark, a 16,384-token request reserved 13.66 GiB
 with it and 14.97 GiB without it (allocator fragmentation; allocated memory was 13.56 GiB either way). Run with no display
 attached to the card if you can: a desktop session can take several hundred MiB of the 16 GB.
