@@ -268,3 +268,13 @@ on spark-1 (spark-2 runs E5): (a) Kev-4B delta (init jaredpalmer/kev-4b, base Qw
 batching; (b) Kev-4B with --length_sort 1; (c) Kev-0.8B with --length_sort 1 (vs E5's 0.745 s/rec on identical
 hardware). Read: steady s/rec over steps 20-40 and peak memory. --length_sort changes micro-batch composition, so
 losses are not comparable across arms; it is a recipe change, to be validated by accuracy before adoption.
+- 2026-10-05T08:10Z `hazard` first E6 launch failed at once: evals/round15/joint/train.jsonl existed only on spark-2.
+  Rebuilt on spark-1 (sha 1bf25e29 ok) and relaunched.
+- 2026-10-05T08:40Z `run` E6 (spark-1, 40 steps = 454 records, 257,756 forward tokens each; training_metrics.json):
+  4B default 3.79 s/rec cumulative, wall 1,720 s incl. load, peak device 56.3 GB (MemAvailable min 43 GB);
+  4B --length_sort 1 1.72 s/rec, wall 779 s, peak 37.5 GB (2.2x faster, -19 GB); 0.8B --length_sort 1 0.65 s/rec, wall
+  296 s, peak 11.0 GB (vs E5's default 0.745 s/rec, ~13 % faster). Losses at logged steps within 0.01 between 4B arms.
+  Projected one epoch of the 30k-record r15 corpus: 4B ~32 h default / ~14 h length-sorted; 0.8B ~6.3 h / ~5.5 h.
+- 2026-10-05T08:40Z `finding` **Kev-4B LoRA training fits a Spark comfortably (peak 37-56 GB of 128) and
+  --length_sort 1 halves its time on long-document data**; the gain is from padding (long, mixed-length states), so it
+  shrinks for short-state workloads (0.8B: 13 %). --length_sort is a recipe change: unvalidated for accuracy here.
