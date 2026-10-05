@@ -410,3 +410,30 @@ pushed; only aggregate reports are committed. Development partition only (test i
   Clef; Clef / Clef-Flash lead Kev-9B (and Kev-27B) on this OOD-for-Kev panel by 10-23 index points.** Caveat stated in
   advance stays: Clef's training data is undisclosed; CLINC150 1.000 and SGD 0.967 are consistent with (not proof of)
   those datasets' train splits in Clef's training, which breadth-v1 deliberately excludes from Kev's.
+- 2026-10-05T20:00Z `review` adversarial review of the E9 claim (subagent; every number reproduced: tallies, index).
+  Accepted corrections to my 19:00Z framing:
+  (a) **"reproduces or understates Clef" is wrong.** The disagreements are artifacts of breadth-v1 asking different
+  tasks from the Index: SGD's whole gap is its 50 NONE-answer rows (I re-checked: NONE acc Kev-9B 0.24 / Kev-27B 0.42 /
+  Jev 0.52 / Clef 1.00 / Clef-Flash 0.98; intent rows 0.87 / 0.88 / 0.93 / 0.95 / 0.97), where the Index's macro-F1
+  weights NONE as one class; CLINC150 here is 10 options, not 151 (both Clef 150/150 vs card Clef-Flash 66.8);
+  RouterBench is beaten by a prompt-blind model-name prior (0.47 leave-one-out, reviewer-computed; only Clef-Flash 0.57
+  exceeds it). And the card *overstates* Clef 3-13x on API-Bank (+35.6 / +36.8 vs ours +6.0 / +2.7) and ContractNLI
+  (+23.6 / +26.5 vs +5.6 / +9.4). Magnitudes were never comparable (pre-registered); "understate" was post hoc.
+  (b) "every contradiction favours Clef" is not independent evidence (Clef is higher on 11-12 of 14); opposite-sign
+  non-significant deltas favour Kev (ToolRet -2.7 / -4.0, BFCL -0.7). Under Bonferroni (28 tests) 4 'reproduces' per
+  model survive (Clef: CLINC150, HellaSwag, MuSR, BRIGHT; Clef-Flash: Humicroedit, HellaSwag, MuSR, SATA-Bench).
+  (c) index uncertainty (reviewer's paired record bootstrap, 1,000): Clef - Kev-27B +10.5 [7.5, 13.6]; Clef-Flash -
+  Kev-9B +22.4 [19.3, 25.9]; Clef-Flash - Clef +3.6 [0.7, 6.5]; **Jev - Kev-27B +1.6 [-1.1, 4.5]: not separated** (my
+  ordering "Jev 53.3 > Kev-27B 51.6" withdrawn). Jev's read is older (2026-09-24, gateway alias, suite manifest hash
+  48db8e97 vs 6a391fed now; rows' ids / keys / labels match).
+  (d) contamination: most of these datasets have public train splits; the panel is OOD for Kev, possibly in
+  distribution for Clef. Dropping RouterBench / SGD / CLINC150 shrinks the leads to ~+8 / +18; also HellaSwag / MuSR ->
+  ~+5 / +14 (rough; area weights shift).
+  (e) no positive control for the remote scoring path (here or in E8): running now (Kev-9B served by kev.serve fp32,
+  read with --remote, vs its in-process rows).
+- 2026-10-05T20:00Z `finding` (revised; supersedes 19:00Z) **E9: on breadth-v1 dev the card's direction reproduces
+  significantly for Clef on 8/14 datasets and Clef-Flash 6/14 vs Kev-9B v2 (4 each under Bonferroni); the card's
+  magnitudes do not (much smaller here on API-Bank / ContractNLI), and its disagreements trace to breadth-v1's task
+  construction (SGD NONE option, 10-way CLINC, RouterBench name prior). Index-style: Clef +10.5 [7.5, 13.6] over
+  Kev-27B v2, Clef-Flash +22.4 [19.3, 25.9] over Kev-9B v2; ~+5 / +14 without the five most suspect datasets. Jev and
+  Kev-27B not separated. OOD for Kev; Clef's exposure unknown.**
