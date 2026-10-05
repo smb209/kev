@@ -278,3 +278,9 @@ losses are not comparable across arms; it is a recipe change, to be validated by
 - 2026-10-05T08:40Z `finding` **Kev-4B LoRA training fits a Spark comfortably (peak 37-56 GB of 128) and
   --length_sort 1 halves its time on long-document data**; the gain is from padding (long, mixed-length states), so it
   shrinks for short-state workloads (0.8B: 13 %). --length_sort is a recipe change: unvalidated for accuracy here.
+- 2026-10-05T09:20Z `run` E7 skill-shaped timing (spark-1, timing only, checkpoints discarded): the kev-finetune
+  skill's default job shape = 968 short-state records (decision-v7 calibration partition as a stand-in for user data) +
+  --replay 2000, 1 epoch, Kev-4B delta, lr 2e-5, batch 4 x accum 2, 60 steps (592 records incl. none-pair siblings,
+  115k forward tokens): default 0.627 s/rec, wall 371 s, peak 24.8 GB; --length_sort 1 0.439 s/rec, wall 260 s, peak
+  20.2 GB. Full job ~2,968 requests -> ~3,650 records seen -> **~38 min (default) / ~27 min (length-sorted) on one
+  Spark** + ~2-5 min load (skill's figure on an H100: ~15 min for 1,000 records).
