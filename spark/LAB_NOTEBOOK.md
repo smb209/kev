@@ -347,3 +347,25 @@ leaderboard (Decision Index 0.2.1); their training data is undisclosed, so conta
   -8.09]; documents-v1 -3.70 [-5.89, -1.51] / -4.35 [-6.67, -2.09]; semif -1.98 [-4.03, 0.00] / -1.19 [-5.12, +2.38].
   Kev-27B documents-v1 clean acc 0.9163 (920). As pre-registered these say little about generality: Kev trained on
   hard-v1 / devtools-v1 / documents-v1 / decision-v7 train partitions (Kev-27B v2's SFT corpus includes them).
+- 2026-10-05T16:30Z `review` adversarial review of the E8 claim (subagent). No pairing, key / label alignment,
+  truncation (max Clef input 5,404 tokens of 16,384; 0 rejected) or CI error (deltas reproduced exactly). Accepted:
+  (a) **correction: my primary row set was wrong.** "All 1,264 rows" includes 110 `unknowable` rows whose labels carry no
+  answer (kev/benchmark.py:87: "scored on confidence, never on accuracy"; kev/transfer_v9.py deletes the deciding
+  evidence). The suite's accuracy set is the 1,046 knowable clean rows (report.json `clean`). Re-scored (I re-ran it,
+  record-clustered, 2,000 resamples, seed 0): **Clef vs Kev-27B -0.29 pp [-2.66, +2.06] (discordant 70 / 67);
+  Clef-Flash vs Kev-9B +2.01 pp [-0.39, +4.49] (69 / 90).** The 14:30Z numbers (-0.32 / +1.19 on 1,264) are superseded.
+  (b) power: discordance ~18 %, SE ~1.2 pp, MDE ~3.2 pp. 27B pair: CI inside +/-3 pp (equivalence within ~3 pp
+  defensible); 9B pair: not equivalent at 3 pp, point estimate favours Clef-Flash.
+  (c) transfer-v9 partly favours Kev: ~366 of the 1,046 rows come from Kev's own generator families (legacy_holdout <-
+  legacy_policy, composition_holdout <- compositional, unknowable_control <- night2_unknowable_control, buried <- Kev
+  decision records), and the none_absent / none_present / permuted variants are Kev's augmentation format. Split:
+  public sources (680) Clef - Kev-27B +0.7 pp, Clef-Flash - Kev-9B +2.5 pp; Kev-synthetic (366) -2.2 / +1.1 pp.
+  "Eval-only by construction" holds by source name, not by distribution.
+  (d) a null on transfer-v9 neither confirms nor refutes Cloudflare's card (a different suite: Decision Index 0.2.1).
+  evals/breadth-v1 mirrors the Index, but its partitions are in jaredpalmer/kev-private-evals: **no access from our
+  token** (dataset_info -> Repository Not Found). scripts/build_breadth_v1.py claims a byte-for-byte rebuild from public
+  sources (some NC / share-alike / unlicensed text: must never be pushed).
+- 2026-10-05T16:30Z `finding` (revised; supersedes 14:30Z) **E8: on transfer-v9's 1,046 knowable questions Clef ~= Kev-27B
+  (-0.3 pp [-2.7, +2.1], equivalent within ~3 pp) and Clef-Flash leads Kev-9B by +2.0 pp [-0.4, +4.5], not
+  significant; the suite leans toward Kev, so Clef is if anything understated. On Kev's own training distributions Kev
+  leads by 4-16 pp. Cloudflare's card is untested here.**
