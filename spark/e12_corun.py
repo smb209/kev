@@ -23,9 +23,12 @@ def post(url, body):
         return json.loads(r.read())
 
 
+GPU = None   # nvidia-smi -i index; set from --gpu (multi-GPU hosts: only the card under test)
+
+
 def sample(stop, out):
     while not stop.is_set():
-        q = subprocess.run(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"],
+        q = subprocess.run(["nvidia-smi", *(["-i", str(GPU)] if GPU is not None else []), "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"],
                            capture_output=True, text=True).stdout
         procs = {int(p): int(m) for p, m in (l.split(", ") for l in q.strip().splitlines() if l.strip())}
         out.append({"t": time.time(), "procs": procs, "sum_mib": sum(procs.values())})
@@ -47,9 +50,11 @@ if __name__ == "__main__":
     ap.add_argument("--embed-model", default="Qwen/Qwen3-Embedding-4B")
     ap.add_argument("--tokens", type=int, default=8192); ap.add_argument("--para-repeats", type=int, default=261, help="261 x PARA ~ 8,108 Qwen3 tokens (calibrated on v2: 6.45 chars/token)"); ap.add_argument("--seconds", type=int, default=180)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--gpu", type=int, help="only count processes on this GPU index (haumea: 0 = RTX 4060 Ti)")
     ap.add_argument("--embed-streams", type=int, default=1, help="concurrent embedding request streams (v5: 2 = the server's max_num_seqs)")
     ap.add_argument("--clef-big-every", type=int, default=0, help="every Nth Clef request carries 10 questions x 5 options instead of 3 (v5: 2)")
     a = ap.parse_args()
+    GPU = a.gpu
     base = PARA * a.para_repeats   # sized client-side just under --tokens (v3: an over-length input hung vLLM even with truncation)
     seq = iter(range(10**9)); seen = {"embed_prompt_tokens": []}
     def unique():   # a distinct document each call: a leading counter changes every token's context, so no prefix cache can reuse a prefill
