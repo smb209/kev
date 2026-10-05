@@ -1,0 +1,250 @@
+<title>Kev on DGX Spark</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Public+Sans:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column (~72ch) with full-bleed data tables; verdict strip up top, then one section per question. */
+:root {
+  --bg: #f5f7f6;
+  --surface: #ffffff;
+  --ink: #15201d;
+  --muted: #5a6a66;
+  --rule: #d6dedb;
+  --accent: #0b6e66;
+  --accent-soft: #e0efec;
+  --good: #2f7d32;
+  --warn: #9a6200;
+  --bad: #b3261e;
+  --bar: #0b6e66;
+  --bar-2: #9fb7b2;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1514; --surface: #151d1b; --ink: #e3ebe8; --muted: #93a6a1; --rule: #2a3734;
+    --accent: #5cc4b8; --accent-soft: #19302c; --good: #7cc47f; --warn: #e0a64a; --bad: #f08a80;
+    --bar: #5cc4b8; --bar-2: #3c5450; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1514; --surface: #151d1b; --ink: #e3ebe8; --muted: #93a6a1; --rule: #2a3734;
+  --accent: #5cc4b8; --accent-soft: #19302c; --good: #7cc47f; --warn: #e0a64a; --bad: #f08a80;
+  --bar: #5cc4b8; --bar-2: #3c5450; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 400 16px/1.6 var(--body); padding: 0 20px; padding-block: 40px 80px; }
+main { max-width: 860px; margin: 0 auto; display: grid; gap: 56px; }
+header { display: grid; gap: 14px; }
+.eyebrow { font: 600 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1 { font: 700 clamp(34px, 6vw, 52px)/1.05 var(--display); margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font: 700 26px/1.2 var(--display); margin: 0; text-wrap: balance; }
+h3 { font: 600 17px/1.3 var(--body); margin: 0; }
+p { margin: 0; max-width: 68ch; }
+.lede { font-size: 18px; color: var(--muted); max-width: 64ch; }
+.meta { font: 400 13px/1.5 var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 18px; }
+section { display: grid; gap: 18px; }
+section > .head { display: grid; gap: 6px; border-top: 2px solid var(--ink); padding-top: 14px; }
+.q { font: 600 12px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+ul { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 68ch; }
+code, .mono { font-family: var(--mono); font-size: .88em; }
+code { background: var(--accent-soft); padding: 1px 5px; border-radius: 3px; }
+.verdicts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.verdict { background: var(--surface); border: 1px solid var(--rule); padding: 16px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.verdict .ask { font: 600 12px/1.3 var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.verdict .ans { font: 700 20px/1.2 var(--display); }
+.verdict p { font-size: 14px; color: var(--muted); }
+.pill { display: inline-block; font: 600 11px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase; padding: 4px 7px; border-radius: 3px; border: 1px solid currentColor; width: max-content; }
+.pill.good { color: var(--good); } .pill.warn { color: var(--warn); } .pill.bad { color: var(--bad); }
+.tablewrap { overflow-x: auto; border: 1px solid var(--rule); background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font: 600 11px/1.3 var(--mono); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); background: var(--bg); white-space: nowrap; }
+td.num, th.num { text-align: right; white-space: nowrap; font-family: var(--mono); font-size: 13px; }
+tr:last-child td { border-bottom: 0; }
+td.hl { font-weight: 600; color: var(--accent); }
+.note { font-size: 14px; color: var(--muted); border-left: 3px solid var(--rule); padding-left: 12px; max-width: 68ch; }
+.bars { display: grid; gap: 10px; background: var(--surface); border: 1px solid var(--rule); padding: 16px; }
+.barrow { display: grid; grid-template-columns: minmax(150px, 210px) 1fr; gap: 12px; align-items: center; min-width: 0; }
+.barrow .lbl { font-size: 13px; }
+.track { display: grid; gap: 3px; min-width: 0; }
+.b { height: 14px; background: var(--bar); position: relative; min-width: 2px; }
+.b.bf16 { background: var(--bar-2); }
+.b span { position: absolute; left: calc(100% + 6px); top: -2px; font: 400 12px/18px var(--mono); color: var(--ink); white-space: nowrap; }
+.legend { display: flex; gap: 16px; font: 400 12px/1 var(--mono); color: var(--muted); flex-wrap: wrap; }
+.legend i { display: inline-block; width: 12px; height: 10px; margin-right: 6px; vertical-align: -1px; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
+.two > * { min-width: 0; }
+pre { margin: 0; background: var(--surface); border: 1px solid var(--rule); padding: 14px; overflow-x: auto; font: 400 12.5px/1.6 var(--mono); }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 16px; }
+@media (max-width: 520px) { .barrow { grid-template-columns: 1fr; gap: 4px; } }
+</style>
+
+<main>
+<header>
+  <div class="eyebrow">Lab report · DGX Spark × Kev</div>
+  <h1>Kev on DGX Spark</h1>
+  <p class="lede">Can our two DGX Sparks serve Kev-27B, run it quantized, fine-tune the small Kevs on our own data, and how does Kev compare with Cloudflare's Clef? Every result below was pre-registered before its data existed, scored against reference runs, and reviewed by an adversarial second pass. Corrections are kept, not hidden.</p>
+  <div class="meta"><span>2026-10-04 → 10-05</span><span>spark-1 / spark-2 · NVIDIA GB10 · 128 GB unified</span><span>branch <code>spark-investigation</code> on smb209/kev</span></div>
+</header>
+
+<section aria-label="Answers">
+  <div class="verdicts">
+    <div class="verdict"><span class="ask">Kev-27B on one Spark?</span><span class="ans">Yes, in bf16</span><span class="pill good">Same answers as H200</span><p>72 GB GPU process. 0–0.26 % of answers differ from the H200 release reads, within known kernel drift. About 10–15× slower than an H200.</p></div>
+    <div class="verdict"><span class="ask">Quantized to NVFP4?</span><span class="ans">2.1–3.5× faster</span><span class="pill good">≤ 0.7 pp accuracy cost</span><p>Our own runtime from the official weights. 65.5 → 30.6 GB resident. Fused serving path: −0.16 pp [−0.70, +0.36].</p></div>
+    <div class="verdict"><span class="ask">Fine-tune on the Sparks?</span><span class="ans">Yes, reproducibly</span><span class="pill good">Within 0.2 pp of H200</span><p>Re-ran the released Kev-0.8B stage: same model, 7× slower (6.2 h vs 52 min). A typical Kev-4B job on your data: about 27–38 min.</p></div>
+    <div class="verdict"><span class="ask">Clef vs Kev?</span><span class="ans">Clef stronger off Kev's turf</span><span class="pill warn">Training data undisclosed</span><p>Even on Kev's held-out suite; Clef ahead by 10–22 index points on the Decision Index datasets. Kev ahead 4–16 pp on its own training tasks.</p></div>
+  </div>
+</section>
+
+<section aria-labelledby="s-serve">
+  <div class="head"><span class="q">Question 1</span><h2 id="s-serve">Serving Kev-27B on one Spark</h2></div>
+  <p>Kev-27B v2 (51 GB of bf16 weights, hash-verified against the release) loads and serves on a single Spark with no changes to Kev's code. Two environment fixes were needed: PyTorch's aarch64 wheel on PyPI is CPU-only, so the venv installs the CUDA 12.9 build; and <code>~/.triton</code> is root-owned on both boxes, so <code>TRITON_CACHE_DIR</code> must point inside the project.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Suite (development)</th><th class="num">Questions</th><th class="num">Answers that differ from H200</th><th class="num">p99 |Δp|</th><th class="num">Accuracy H200 → Spark</th></tr></thead>
+    <tbody>
+      <tr><td>semif-v1</td><td class="num">252</td><td class="num">0</td><td class="num">0.008</td><td class="num">0.980 → 0.980</td></tr>
+      <tr><td>transfer-v4</td><td class="num">764</td><td class="num">2 (0.26 %)</td><td class="num">0.016</td><td class="num">0.847 → 0.847</td></tr>
+      <tr><td>decision-v7</td><td class="num">1,468</td><td class="num">2 (0.14 %)</td><td class="num">0.009</td><td class="num">0.865 → 0.863</td></tr>
+    </tbody>
+  </table></div>
+  <p>Speed is set by memory bandwidth. Each forward pass reads all 51 GB of weights at about 224 GB/s, a floor of 0.23 s per pass, and CUDA graphs don't help because the Spark isn't launch-bound. Measured: 588 ms for a 2-question request with a new state, 304 ms with a cached state (H200: 40 / 22 ms), and 3.8 requests/s at 64 concurrent clients (H200: 39.7). Cold start is 5–7 minutes.</p>
+</section>
+
+<section aria-labelledby="s-quant">
+  <div class="head"><span class="q">Question 2</span><h2 id="s-quant">NVFP4 Kev-27B</h2></div>
+  <p>There is no official quantized Kev. The only community NVFP4 build of v2 ships as a 19 GB pickle that its own README says loads with <code>weights_only=False</code>, so we did not load it. Instead we built <code>spark/kev_quant.py</code>: it replaces the backbone's Linear layers with FP8 or NVFP4 versions at load time, using FlashInfer's FP4 CUTLASS kernels (about 250 TFLOPS on the GB10, against 78 for bf16) and static activation scales calibrated on a split that is never scored.</p>
+  <div class="bars" role="img" aria-label="Model latency in milliseconds, bf16 against NVFP4, per request shape">
+    <div class="legend"><span><i style="background:var(--bar-2)"></i>bf16</span><span><i style="background:var(--bar)"></i>NVFP4</span><span>model latency, ms (new state)</span></div>
+    <div class="barrow"><span class="lbl">2 questions, short state</span><div class="track"><div class="b bf16" style="width:19.9%"><span>588</span></div><div class="b" style="width:5.7%"><span>168</span></div></div></div>
+    <div class="barrow"><span class="lbl">6 questions, short state</span><div class="track"><div class="b bf16" style="width:28.6%"><span>844</span></div><div class="b" style="width:9.3%"><span>274</span></div></div></div>
+    <div class="barrow"><span class="lbl">5 questions, 370-token state</span><div class="track"><div class="b bf16" style="width:33.7%"><span>995</span></div><div class="b" style="width:11.8%"><span>349</span></div></div></div>
+    <div class="barrow"><span class="lbl">5 questions, 2,200-token state</span><div class="track"><div class="b bf16" style="width:85%"><span>2,510</span></div><div class="b" style="width:39.7%"><span>1,172</span></div></div></div>
+  </div>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Arm (vs same-environment bf16)</th><th class="num">Pooled Δ accuracy</th><th class="num">95 % CI</th><th>Path</th><th class="num">Resident</th></tr></thead>
+    <tbody>
+      <tr><td>FP8</td><td class="num">−0.12 pp</td><td class="num">[−0.40, +0.12]</td><td>benchmark (unfused)</td><td class="num">—</td></tr>
+      <tr><td>NVFP4-MLP (attention in FP8)</td><td class="num">−0.40 pp</td><td class="num">[−0.92, +0.08]</td><td>benchmark (unfused)</td><td class="num">33.8 GB</td></tr>
+      <tr><td>NVFP4</td><td class="num">−0.36 pp</td><td class="num">[−0.96, +0.24]</td><td>benchmark (unfused)</td><td class="num">30.6 GB</td></tr>
+      <tr><td class="hl">NVFP4</td><td class="num hl">−0.16 pp</td><td class="num hl">[−0.70, +0.36]</td><td class="hl">serving kernels (fused)</td><td class="num hl">30.6 GB</td></tr>
+    </tbody>
+  </table></div>
+  <ul>
+    <li>Pooled over 2,484 questions in three suites. The design resolves losses of about 1 pp, so read these as "no loss larger than the CI bound", not "no loss".</li>
+    <li>Throughput at 64 clients rises from 3.8 to 10.3 requests/s.</li>
+    <li>NVFP4 moves individual probabilities by up to 0.3–0.6 on a few questions, and its answers shift about as much between two kernel paths as between NVFP4 and bf16. Re-freeze any decision thresholds for the quantized model.</li>
+    <li>Calibration (ECE) could not be resolved at this sample size: a perfectly calibrated model would score about 0.012 here by chance alone.</li>
+  </ul>
+</section>
+
+<section aria-labelledby="s-ft">
+  <div class="head"><span class="q">Question 3</span><h2 id="s-ft">Fine-tuning the small Kevs</h2></div>
+  <p>We reran the exact recipe behind the released Kev-0.8B (round 15: same data, rebuilt byte for byte, same seed) on spark-2 and scored it against the H200 checkpoint.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Dev panel</th><th class="num">H200 trained</th><th class="num">Spark trained</th><th class="num">Δ (95 % CI)</th><th class="num">Gain from init, Spark / H200</th></tr></thead>
+    <tbody>
+      <tr><td>decision-v7</td><td class="num">0.8267</td><td class="num">0.8275</td><td class="num">+0.08 [−0.40, +0.55]</td><td class="num">—</td></tr>
+      <tr><td>documents-v1</td><td class="num">0.8424</td><td class="num">0.8413</td><td class="num">−0.11 [−0.76, +0.54]</td><td class="num">+20.9 / +21.0 pp</td></tr>
+      <tr><td>hard-v1</td><td class="num">0.5937</td><td class="num">0.5919</td><td class="num">−0.18 [−1.28, +0.91]</td><td class="num">+24.3 / +24.4 pp</td></tr>
+      <tr><td>devtools-v1</td><td class="num">0.6021</td><td class="num">0.6030</td><td class="num">+0.09 [−0.73, +0.90]</td><td class="num">—</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">The H200's own seed-to-seed spread on this recipe is 0.8–1.7 pp, so these deltas are an order of magnitude inside it. Peak memory matched exactly (23.9 GB). The run took 6.2 h, against 52 min on the H200.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Job</th><th class="num">s / record</th><th class="num">Peak memory</th><th class="num">Wall time</th></tr></thead>
+    <tbody>
+      <tr><td>Kev-4B, kev-finetune skill default (~1,000 records + 2,000 replay)</td><td class="num">0.63</td><td class="num">24.8 GB</td><td class="num">≈ 38 min</td></tr>
+      <tr><td>Same, <code>--length_sort 1</code></td><td class="num">0.44</td><td class="num">20.2 GB</td><td class="num">≈ 27 min</td></tr>
+      <tr><td>Kev-4B, long-document corpus (30k records, up to 7k tokens)</td><td class="num">3.79 → 1.72 sorted</td><td class="num">56 → 38 GB</td><td class="num">≈ 32 h → 14 h</td></tr>
+    </tbody>
+  </table></div>
+  <p>A Kev-4B fine-tune on your own labelled decisions fits comfortably on one Spark while the other serves. <code>--length_sort 1</code> helps most on mixed-length data, but it changes the recipe and hasn't been validated for accuracy yet.</p>
+</section>
+
+<section aria-labelledby="s-clef">
+  <div class="head"><span class="q">Question 4</span><h2 id="s-clef">Clef and Clef-Flash against Kev</h2></div>
+  <p>Cloudflare's Clef (27B, on the same Qwen3.8-27B base as Kev-27B) and Clef-Flash (9B) speak the same System One API, also accept images and video, and score all questions in one joint pass. We hand-reviewed their loader code, pinned the revision and file hash, and scored them through Kev's own harness. A control confirmed that this HTTP path reproduces Kev-9B's local answers exactly (0 of 3,075 differ).</p>
+  <div class="two">
+    <div class="tablewrap"><table>
+      <thead><tr><th>transfer-v9 (held out from Kev)</th><th class="num">Δ, Clef side − Kev</th></tr></thead>
+      <tbody>
+        <tr><td>Clef vs Kev-27B v2</td><td class="num">−0.3 pp [−2.7, +2.1]</td></tr>
+        <tr><td>Clef-Flash vs Kev-9B v2</td><td class="num">+2.0 pp [−0.4, +4.5]</td></tr>
+      </tbody>
+    </table></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Kev's training suites</th><th class="num">Clef / Clef-Flash − Kev</th></tr></thead>
+      <tbody>
+        <tr><td>hard-v1</td><td class="num">−15.3 / −16.3 pp</td></tr>
+        <tr><td>devtools-v1</td><td class="num">−3.7 / −11.2 pp</td></tr>
+        <tr><td>documents-v1</td><td class="num">−3.7 / −4.4 pp</td></tr>
+        <tr><td>decision-v7</td><td class="num">−0.3 / +0.1 pp</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+  <p>To test Cloudflare's model card we rebuilt breadth-v1, Kev's private mirror of 14 Decision Index datasets, from public sources. It is byte-identical to the original (sha256 checked); the licence-restricted rows stay on the Sparks and are not in the repository.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>breadth-v1, Index-style score (chance-corrected, 0–100)</th><th class="num">Overall</th><th class="num">Knowledge</th><th class="num">Language</th><th class="num">Retrieval</th><th class="num">Tools</th><th class="num">Arts</th></tr></thead>
+    <tbody>
+      <tr><td class="hl">Clef-Flash (9B)</td><td class="num hl">66.0</td><td class="num">53.3</td><td class="num">86.0</td><td class="num">84.2</td><td class="num">69.8</td><td class="num">36.7</td></tr>
+      <tr><td>Clef (27B)</td><td class="num">62.3</td><td class="num">49.6</td><td class="num">84.1</td><td class="num">86.0</td><td class="num">66.4</td><td class="num">25.3</td></tr>
+      <tr><td>Jev (earlier read)</td><td class="num">53.3</td><td class="num">37.7</td><td class="num">77.4</td><td class="num">75.4</td><td class="num">63.6</td><td class="num">12.7</td></tr>
+      <tr><td>Kev-27B v2</td><td class="num">51.6</td><td class="num">34.5</td><td class="num">77.5</td><td class="num">69.8</td><td class="num">65.0</td><td class="num">11.3</td></tr>
+      <tr><td>Kev-9B v2</td><td class="num">43.3</td><td class="num">25.9</td><td class="num">68.3</td><td class="num">57.1</td><td class="num">59.3</td><td class="num">6.0</td></tr>
+    </tbody>
+  </table></div>
+  <ul>
+    <li>Paired gaps: Clef +10.5 [7.5, 13.6] over Kev-27B; Clef-Flash +22.4 [19.3, 25.9] over Kev-9B. Jev and Kev-27B are not separated (+1.6 [−1.1, 4.5]).</li>
+    <li>The card's claimed direction reproduces significantly on 8 of 14 datasets for Clef and 6 of 14 for Clef-Flash. Its magnitudes do not: API-Bank and ContractNLI gaps are 3–13× smaller here.</li>
+    <li>Where this panel disagrees with the card (SGD, CLINC150, RouterBench), the cause is how breadth-v1 builds those tasks: a "NONE" option, 10-way subsets, a model-name prior. It doesn't mean the card understates Clef.</li>
+    <li>Dropping the five most affected datasets shrinks the leads to about +5 and +14.</li>
+    <li>Kev never trains on these datasets. Clef's training data is undisclosed, and most of these datasets have public training splits, so this panel is out of distribution for Kev and possibly not for Clef.</li>
+  </ul>
+</section>
+
+<section aria-labelledby="s-guide">
+  <div class="head"><span class="q">Housekeeping</span><h2 id="s-guide">Corrections to the Spark operator guide</h2></div>
+  <p>Most of the guide checked out (hardware, IPs, sparkrun setup, mounts, memory rules, the fine-tune pipeline). These items did not:</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Guide says</th><th>Measured</th></tr></thead>
+    <tbody>
+      <tr><td>No SSH keys between the boxes</td><td>SSH works both ways, over LAN and the cluster link</td></tr>
+      <tr><td>Cluster link at MTU 9000</td><td>The interface holding 192.168.201.x is MTU 1500 (eth0 is 9000; RoCE MTU 1024)</td></tr>
+      <tr><td><code>spark-1</code> resolves to the proxy 192.168.10.30</td><td>It does not resolve at all from the Mac (NXDOMAIN). Using IPs is still right</td></tr>
+      <tr><td>Fine-tunes build on <code>pytorch:26.03-py3</code></td><td>That image is on neither box, so a rebuild pulls ~20 GB</td></tr>
+      <tr><td>CUDA 13 installed</td><td>Yes, but <code>nvcc</code> is not on PATH</td></tr>
+      <tr><td>(not in guide)</td><td>spark-2 cannot <code>git clone</code> from GitHub; PyPI's aarch64 torch wheel is CPU-only</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section aria-labelledby="s-method">
+  <div class="head"><span class="q">Method</span><h2 id="s-method">How the numbers were made</h2></div>
+  <ul>
+    <li>Each experiment's read rule was written into the lab notebook before its data existed. Every scorer was first run on a positive control: identical reads scoring zero, and known-different reads scoring different.</li>
+    <li>Adversarial reviews ran at each milestone. They led to four recorded corrections: a double-applied temperature in the first scorer, an ECE criterion with no statistical power, "unknowable" rows wrongly counted in accuracy, and an overstated reading of the Clef card. A training-speed hypothesis was also retracted after uncontended measurements contradicted it.</li>
+    <li>All paired comparisons use a record-clustered bootstrap (2,000 resamples, seed 0).</li>
+  </ul>
+  <pre>git clone https://github.com/smb209/kev -b spark-investigation
+# full record: spark/LAB_NOTEBOOK.md · scripts: spark/*.py, spark/*.sh
+bash spark/env.sh                                    # venv on a Spark (torch 2.8 cu129, fla 0.5.2)
+python -m kev.serve --run jaredpalmer/kev-27b --host 0.0.0.0 --port 8009
+QUANT_MEM=100g bash spark/quant_run.sh s python3 spark/kev_quant.py --scheme nvfp4 serve --run jaredpalmer/kev-27b</pre>
+</section>
+
+<section aria-labelledby="s-next">
+  <div class="head"><span class="q">Next</span><h2 id="s-next">Open items</h2></div>
+  <ul>
+    <li><b>Quantized Clef-Flash for a 16 GB GPU</b> (in progress next): adapt the quantization runtime to Clef's loader, keeping its vision tower and joint head in bf16, then read it against bf16 Clef-Flash as in the NVFP4 work.</li>
+    <li>A latency comparison of Clef and Kev on identical requests through one harness. The latencies above come from different code paths.</li>
+    <li>NVFP4 calibration at a larger sample, and on states longer than 2,200 tokens.</li>
+    <li>Fine-tuning Clef-Flash on our data, if its release supports training.</li>
+  </ul>
+</section>
+
+<footer>Kev by Jared Palmer (Apache-2.0); Clef by Cloudflare (Apache-2.0). Numbers trace to <code>spark/LAB_NOTEBOOK.md</code> and the reports under <code>runs/spark/</code> on the branch above.</footer>
+</main>
