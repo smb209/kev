@@ -525,3 +525,16 @@ added latency of CPU gathers (median / p95 vs E10 FP8 on transfer-v9).
 - 2026-10-06T06:00Z `finding` **E10 / E11a: text-only FP8 Clef-Flash runs in 6.7 GiB of GPU weights (8.9 GiB allocator
   peak at 16k tokens), answers bit-identical to the 11.3 GiB FP8 build, no accuracy loss beyond 0.18 pp vs bf16 (or
   0.23 pp on the bf16-output fallback path).** Untested: the Ada card itself, image input (refused in text-only mode).
+- 2026-10-06T07:00Z `reference` user's 16 GB Ada card runs Qwen3-Embedding-8B FP8 at 32k context: 15.9 / 16.4 GB used.
+  Research subagent (web, sources in session) on smaller embedder options. Checked by me: KV arithmetic re-derived
+  (2 x 36 layers x 8 KV heads x 128 x 2 B = 144 KiB / token; 32k = 4.5 GiB bf16, 2.25 GiB fp8; 4B has the same KV shape);
+  param count 7.57 B (6.95 B linear + 0.62 B embedding) -> FP8 weights ~7.6 GiB, so most of the 15.9 GB is vLLM's
+  up-front reservation (gpu_memory_utilization), not need. Qwen card (fetched): Eng v2 retrieval 8B 69.44 / 4B 68.46 /
+  0.6B 61.83 (matches the agent); **MMTEB retrieval mismatch**: agent 70.88 / 69.60 / 64.64 vs card read 86.40 / 85.05 /
+  80.83 (unresolved; agent's cross-model multilingual retrieval figures treated as unverified). Agent's recommendation:
+  Qwen3-Embedding-4B FP8 + FP8 KV cache, ~7.4 GiB at 32k (estimate), -0.98 Eng v2 retrieval. Only published 4-bit
+  evidence on the 8B (arXiv 2609.24322, round-to-nearest int4): -3.1 % rel nDCG@10, 15.6 % of gold top-1 lost: unverified.
+- 2026-10-06T07:00Z `check` co-residency arithmetic (estimates, not measured; ~15.3 GiB usable of 16.4 GB): 4B FP8 at
+  32k ~7.4 GiB + Clef-Flash text-only peak 8.9 GiB at 16k + two CUDA contexts ~1 GiB = ~17.3 GiB -> **does not fit**.
+  With the embedder at 8k chunks (FP8 KV 0.56 GiB, ~5.7 GiB) and Clef-Flash capped near 8k tokens (~7.8 GiB, between
+  the measured 7.6 @ 6.6k and 8.9 @ 16k) -> ~14.5 GiB: fits, tight. Needs a measured co-residency test before any claim.
