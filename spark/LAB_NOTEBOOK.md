@@ -293,3 +293,21 @@ losses are not comparable across arms; it is a recipe change, to be validated by
   115k forward tokens): default 0.627 s/rec, wall 371 s, peak 24.8 GB; --length_sort 1 0.439 s/rec, wall 260 s, peak
   20.2 GB. Full job ~2,968 requests -> ~3,650 records seen -> **~38 min (default) / ~27 min (length-sorted) on one
   Spark** + ~2-5 min load (skill's figure on an H100: ~15 min for 1,000 records).
+
+**E8 Clef vs Kev (pre-registered 2026-10-05T11:10Z, before any Clef read).** Cloudflare/clef (27B, Qwen3.8-27B +
+vision, revision 2f3de3dd) and Cloudflare/clef-flash (9B, Qwen3.5-9B + vision, revision 17f0b0ad): verified HF org,
+Apache-2.0, safetensors weights, custom `joint_schema_model.py` (sha256 0e304cf7..., identical in both repos) reviewed by
+hand: imports json/math/torch/safetensors/transformers only, no pickle, no trust_remote_code, no network beyond
+snapshot_download; run pinned to that hash. Their card's "Kev 9B" column is Cloudflare's own run on their own
+leaderboard (Decision Index 0.2.1); their training data is undisclosed, so contamination of any public set is unknown.
+- Pairs: Clef vs Kev-27B v2; Clef-Flash vs Kev-9B v2 (jaredpalmer/kev-9b@main). All bf16 on a Spark, same harness:
+  kev.benchmark; Kev arms in-process (LocalPredictor), Clef arms through kev.benchmark --remote against a local
+  /v1/systemone server wrapping their encode/model with full-precision probabilities (spark/clef_server.py).
+- **Primary (verdict): transfer-v9 development** (1,264 records; eval-only in Kev by construction: Kev never trained on
+  any of its sources; Clef's exposure unknown). Paired accuracy delta, record-clustered bootstrap (spark/parity.py).
+  "Clef better OOD" iff the 95 % CI excludes 0 in its favour; "Kev better" symmetric; else "no detectable difference".
+  MDE: between different models discordance is ~10-20 %, SE ~ sqrt(0.15 / 1,264) ~ 1.1 pp -> MDE ~3 pp.
+- Context, labelled by home field: decision-v7 / hard-v1 / devtools-v1 / documents-v1 dev are Kev training
+  distributions (Kev home field; differences there say little about generality). semif-v1 is saturated (report only).
+- Also reported, not judged: ECE (noise floor per E4 review), latency on the Spark at concurrency 1 (Clef through its
+  own eager path; Kev through kev.serve E3 numbers), memory. Image input is out of scope for Kev, so not compared.
