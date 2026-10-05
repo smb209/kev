@@ -247,3 +247,9 @@ report nvfp4-fused vs nvfp4-unfused flips (does fusion change the quantized answ
   is the same size as its divergence between two kernel paths (1.5 %), i.e. it behaves like rounding noise, with no
   systematic loss detectable at this n; E4 (-0.36) and E4b (-0.16) agree within it. Not covered: the graph path's extra
   spread (max dp 0.19 vs eager), states > 2.2k tokens, and calibration (ECE not resolvable at n 2,484).
+- 2026-10-05T05:45Z `retraction` of the 00:30Z training hypothesis ("small-model LoRA training is memory-bandwidth
+  bound; ratio ~1/24 matches bandwidth ~1/21"). The ~1/24 came from the probe (GPU shared with a subagent, cold Triton
+  caches). The uncontended full run e5-r15-08b-s1 averages 0.749 s/rec at step 1,160 = **7.3x the H200 trial (0.103)**,
+  below both the bandwidth (~21x) and compute (~12x) ratios, so the H200 trial was itself far from either roof (small
+  model, overhead-bound) and no roofline explains the gap. Training-speed cause: open (low priority; 7x is usable).
+  The 00:30Z entry stays as written; read it through this one.
