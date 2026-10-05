@@ -225,6 +225,18 @@ footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--rule)
     <li>FP8 brings no speed gain on this path. It is a memory saving.</li>
     <li>Not yet run on an actual Ada card. Peak memory was measured with PyTorch's allocator capped at 15 GiB on the Spark; a real card also carries the CUDA context and any other process sharing it. <code>spark/ada_validate.md</code> has the steps and the expected answers to check against.</li>
   </ul>
+  <h3>Sharing the card with your embedding model</h3>
+  <p>Your card currently runs Qwen3-Embedding-8B (FP8, 32k context) at 15.9 of 16.4 GB, mostly vLLM's default reservation of about 92 % of the card. The plan we measured: Qwen3-Embedding-4B with FP8 weights and an FP8 KV cache pinned at 1.25 GiB, on 8k-token chunks, next to the text-only Clef-Flash build.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Measured on a Spark</th><th class="num">Result</th></tr></thead>
+    <tbody>
+      <tr><td>Combined peak GPU memory (startup, 2 concurrent embeds, 10-question Clef requests)</td><td class="num hl">14.64 GiB</td></tr>
+      <tr><td>Embedder / Clef-Flash peak</td><td class="num">6.58 / 8.06 GiB</td></tr>
+      <tr><td>FP8 vs bf16 4B embeddings (300 documents): median cosine / top-1 / top-10</td><td class="num">0.994 / 99 % / 92 %</td></tr>
+      <tr><td>4B vs 8B English retrieval (Qwen's card)</td><td class="num">68.46 vs 69.44</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">About 0.4 GiB under the 15 GiB budget, and not yet run on the Ada card. Chunk pages client-side and do not send <code>truncate_prompt_tokens</code>: on this vLLM build an over-length request carrying it never returned. Commands and fallbacks: <code>spark/ada_corun.md</code>.</p>
 </section>
 
 <section aria-labelledby="s-guide">
