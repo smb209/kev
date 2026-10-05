@@ -186,3 +186,12 @@ a stand-in for it, and a pass means "no evidence the Spark path differs", not eq
   p99 0.008). The same-env baseline is itself within E2's drift band. Container MemAvailable min 67 GB.
 - 2026-10-05T01:35Z `tool` spark/e4_readout.py (pooled verdict per the E4 pre-registration). Positive control bf16 vs
   itself: delta 0, CI [0, 0], ECE delta 0, n 2,484 questions in 1,496 (suite, group) clusters.
+- 2026-10-05T03:20Z `run` E4 arms fp8 / nvfp4-mlp / nvfp4 (spark-1, one load per arm, container MemAvailable min 66 GB).
+  spark/e4_readout.py (runs/spark/e4/readout.json), pooled 2,484 q vs same-env bf16 (acc 0.8780, ECE 0.0087):
+  fp8 -0.12 pp [-0.40, +0.12], ECE 0.0114, discordant +4/-7; nvfp4-mlp -0.40 pp [-0.92, +0.08], ECE 0.0066, +8/-18;
+  nvfp4 -0.36 pp [-0.96, +0.24], ECE 0.0128, +19/-28. Per suite (flips / p99 dp / max dp): nvfp4 transfer-v4 22/764
+  (2.9 %), 0.20, 0.53; decision-v7 24/1,468, 0.13, 0.20; nvfp4-mlp transfer-v4 15/764, 0.34, 0.64. kev.benchmark median
+  request latency (unfused eager, sequential): bf16 287, fp8 192, nvfp4-mlp 147, nvfp4 123 ms.
+- 2026-10-05T03:20Z `finding` (pending adversarial review) **all three quant arms meet the pre-registered serving-grade
+  gate.** Resolution caveat: CI lower bounds reach -0.92 / -0.96 pp, so the NVFP4 arms are "no loss beyond ~1 pp", not
+  "no loss"; single-question probabilities move by up to 0.5-0.6 under NVFP4 (thresholds must be re-frozen per scheme).
