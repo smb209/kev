@@ -262,3 +262,9 @@ report nvfp4-fused vs nvfp4-unfused flips (does fusion change the quantized answ
   this exact recipe: round 15 arm 08b-c = trial 2 (seed 2, same config). Seed 1 vs seed 2 dev accs: hard-v1 0.5937 vs
   0.5845 (-0.9 pp), documents-v1 0.8424 vs 0.8348 (-0.8), devtools-v1 0.6017 vs 0.5849 (-1.7). n = 2 seeds, so a range,
   not an sd: the pre-registered +/-2 pp tolerance is about one seed-to-seed difference. Read E5's deltas against it.
+
+**E6 fine-tune throughput options (2026-10-05T06:40Z, report only, no gate).** 40-step probes of the r15 joint recipe
+on spark-1 (spark-2 runs E5): (a) Kev-4B delta (init jaredpalmer/kev-4b, base Qwen3.5-4B-Base 1001bb4d), default
+batching; (b) Kev-4B with --length_sort 1; (c) Kev-0.8B with --length_sort 1 (vs E5's 0.745 s/rec on identical
+hardware). Read: steady s/rec over steps 20-40 and peak memory. --length_sort changes micro-batch composition, so
+losses are not comparable across arms; it is a recipe change, to be validated by accuracy before adoption.
