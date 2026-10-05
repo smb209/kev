@@ -96,6 +96,7 @@ footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--rule)
     <div class="verdict"><span class="ask">Kev-27B on one Spark?</span><span class="ans">Yes, in bf16</span><span class="pill good">Same answers as H200</span><p>72 GB GPU process. 0–0.26 % of answers differ from the H200 release reads, within known kernel drift. About 10–15× slower than an H200.</p></div>
     <div class="verdict"><span class="ask">Quantized to NVFP4?</span><span class="ans">2.1–3.5× faster</span><span class="pill good">≤ 0.7 pp accuracy cost</span><p>Our own runtime from the official weights. 65.5 → 30.6 GB resident. Fused serving path: −0.16 pp [−0.70, +0.36].</p></div>
     <div class="verdict"><span class="ask">Fine-tune on the Sparks?</span><span class="ans">Yes, reproducibly</span><span class="pill good">Within 0.2 pp of H200</span><p>Re-ran the released Kev-0.8B stage: same model, 7× slower (6.2 h vs 52 min). A typical Kev-4B job on your data: about 27–38 min.</p></div>
+    <div class="verdict"><span class="ask">Clef-Flash on 16 GB?</span><span class="ans">6.7 GiB, FP8</span><span class="pill good">≤ 0.2 pp accuracy cost</span><p>Text-only FP8 build for Ada cards: 8.9 GiB peak at 16k tokens. Not yet run on the Ada card itself.</p></div>
     <div class="verdict"><span class="ask">Clef vs Kev?</span><span class="ans">Clef stronger off Kev's turf</span><span class="pill warn">Training data undisclosed</span><p>Even on Kev's held-out suite; Clef ahead by 10–22 index points on the Decision Index datasets. Kev ahead 4–16 pp on its own training tasks.</p></div>
   </div>
 </section>
@@ -206,6 +207,26 @@ footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--rule)
   </ul>
 </section>
 
+<section aria-labelledby="s-flash">
+  <div class="head"><span class="q">Question 5</span><h2 id="s-flash">Clef-Flash on a 16 GB Ada card</h2></div>
+  <p>Ada GPUs have FP8 tensor cores but no FP4, so the target format is FP8. We built a pre-quantized export with a loader that never puts the bf16 weights on the GPU, so the 16 GB card does not have to hold the 18 GB original even briefly. For text-only serving, the two embedding tables, which Clef only reads row by row, stay in CPU memory, and the vision tower is not loaded.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Build</th><th class="num">GPU weights</th><th class="num">Peak at 16k tokens</th><th class="num">Accuracy vs bf16 (5,697 q)</th></tr></thead>
+    <tbody>
+      <tr><td>bf16 release</td><td class="num">17.8 GiB</td><td class="num">—</td><td class="num">—</td></tr>
+      <tr><td>FP8 export</td><td class="num">11.3 GiB</td><td class="num">13.7 GiB</td><td class="num">+0.07 pp [−0.18, +0.32]</td></tr>
+      <tr><td class="hl">FP8, host embeddings, text-only</td><td class="num hl">6.7 GiB</td><td class="num hl">8.9 GiB</td><td class="num hl">identical answers to FP8 export</td></tr>
+      <tr><td>FP8 with the bf16-output fallback</td><td class="num">same</td><td class="num">same</td><td class="num">+0.02 pp [−0.23, +0.26]</td></tr>
+    </tbody>
+  </table></div>
+  <ul>
+    <li>The host-embedding build matched the FP8 export on all 1,264 transfer-v9 rows, with zero difference in any probability. It adds about 10 ms to short requests and under 2 % to long ones.</li>
+    <li>Ada's cuBLAS may not accept FP8 matmuls with fp32 output. The loader checks once at start and falls back to bf16 output if needed; both paths were measured above, and <code>/v1/models</code> reports which one is active.</li>
+    <li>FP8 brings no speed gain on this path. It is a memory saving.</li>
+    <li>Not yet run on an actual Ada card. Peak memory was measured with PyTorch's allocator capped at 15 GiB on the Spark; a real card also carries the CUDA context and any other process sharing it. <code>spark/ada_validate.md</code> has the steps and the expected answers to check against.</li>
+  </ul>
+</section>
+
 <section aria-labelledby="s-guide">
   <div class="head"><span class="q">Housekeeping</span><h2 id="s-guide">Corrections to the Spark operator guide</h2></div>
   <p>Most of the guide checked out (hardware, IPs, sparkrun setup, mounts, memory rules, the fine-tune pipeline). These items did not:</p>
@@ -239,7 +260,8 @@ QUANT_MEM=100g bash spark/quant_run.sh s python3 spark/kev_quant.py --scheme nvf
 <section aria-labelledby="s-next">
   <div class="head"><span class="q">Next</span><h2 id="s-next">Open items</h2></div>
   <ul>
-    <li><b>Quantized Clef-Flash for a 16 GB GPU</b> (in progress next): adapt the quantization runtime to Clef's loader, keeping its vision tower and joint head in bf16, then read it against bf16 Clef-Flash as in the NVFP4 work.</li>
+    <li>Run the FP8 Clef-Flash build on the Ada card itself (<code>spark/ada_validate.md</code>).</li>
+    <li>If more room is needed: a 4-bit decoder for Clef-Flash (about 4 GiB in total) using PrismaQuant-style per-layer precision allocation and an Ada-native 4-bit-weight kernel. This needs its own accuracy read.</li>
     <li>A latency comparison of Clef and Kev on identical requests through one harness. The latencies above come from different code paths.</li>
     <li>NVFP4 calibration at a larger sample, and on states longer than 2,200 tokens.</li>
     <li>Fine-tuning Clef-Flash on our data, if its release supports training.</li>
