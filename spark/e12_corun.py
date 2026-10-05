@@ -47,6 +47,8 @@ if __name__ == "__main__":
     ap.add_argument("--embed-model", default="Qwen/Qwen3-Embedding-4B")
     ap.add_argument("--tokens", type=int, default=8192); ap.add_argument("--para-repeats", type=int, default=261, help="261 x PARA ~ 8,108 Qwen3 tokens (calibrated on v2: 6.45 chars/token)"); ap.add_argument("--seconds", type=int, default=180)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--embed-streams", type=int, default=1, help="concurrent embedding request streams (v5: 2 = the server's max_num_seqs)")
+    ap.add_argument("--clef-big-every", type=int, default=0, help="every Nth Clef request carries 10 questions x 5 options instead of 3 (v5: 2)")
     a = ap.parse_args()
     base = PARA * a.para_repeats   # sized client-side just under --tokens (v3: an over-length input hung vLLM even with truncation)
     seq = iter(range(10**9)); seen = {"embed_prompt_tokens": []}
@@ -56,8 +58,13 @@ if __name__ == "__main__":
         r = post(f"{a.embed}/v1/embeddings", {"model": a.embed_model, "input": [unique()]})
         seen["embed_prompt_tokens"].append((r.get("usage") or {}).get("prompt_tokens"))
     doc = base
+    BIG = {f"q{i}": {"type": "choice", "instructions": f"Which category best fits aspect {i} of this document?",
+                     "criteria": {f"opt{j}": f"Category {j} for aspect {i}, described in a full sentence of moderate length." for j in range(5)}}
+           for i in range(10)}
+    nclef = iter(range(10**9))
     def clef():
-        r = post(f"{a.clef}/v1/systemone", {"model": "clef", "state": unique(), "questions": QS})
+        big = a.clef_big_every and next(nclef) % a.clef_big_every == 1
+        r = post(f"{a.clef}/v1/systemone", {"model": "clef", "state": unique(), "questions": BIG if big else QS})
         seen.setdefault("clef_input_tokens", []).append((r.get("usage") or {}).get("input_tokens"))
     QS = {
         "billing": {"type": "noul", "instructions": "Is this about a billing problem?"},
@@ -67,7 +74,7 @@ if __name__ == "__main__":
     embed(); clef()   # warm both once (compiles, first-shape allocations) before the measured window
     stop = threading.Event(); samples = []; stats = {n: {"ok": 0, "err": 0, "lat": []} for n in ("embed", "clef")}
     threads = [threading.Thread(target=sample, args=(stop, samples)),
-               threading.Thread(target=loop, args=("embed", embed, stop, stats)),
+               *[threading.Thread(target=loop, args=("embed", embed, stop, stats)) for _ in range(a.embed_streams)],
                threading.Thread(target=loop, args=("clef", clef, stop, stats))]
     for th in threads: th.start()
     time.sleep(a.seconds); stop.set()
@@ -82,7 +89,7 @@ if __name__ == "__main__":
     assert pt, "embedding responses carried no usage.prompt_tokens"
     assert a.tokens - 300 <= min(pt) and max(pt) <= a.tokens, f"embed requests were {min(pt)}-{max(pt)} tokens, not ~{a.tokens}"
     ct = [t for t in seen.get("clef_input_tokens", []) if t]
-    out = {"tokens": a.tokens, "seconds": a.seconds, "embed_prompt_tokens": {"min": min(pt), "max": max(pt), "n": len(pt)},
+    out = {"embed_streams": a.embed_streams, "clef_big_every": a.clef_big_every, "tokens": a.tokens, "seconds": a.seconds, "embed_prompt_tokens": {"min": min(pt), "max": max(pt), "n": len(pt)},
            "embed_tokens_per_s": round(sum(pt) / a.seconds),
            "clef_input_tokens": {"min": min(ct), "max": max(ct), "n": len(ct)} if ct else None, "idle_sum_mib": max(s["sum_mib"] for s in idle),
            "idle_procs": idle[-1]["procs"], "peak_per_pid_mib": peak, "peak_sum_mib": peak_sum,

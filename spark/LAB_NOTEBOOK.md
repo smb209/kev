@@ -588,3 +588,12 @@ max_model_len 8192, KV pinned with --kv-cache-memory-bytes, max_num_seqs small) 
   text-only FP8 Clef-Flash (8k) run together at a 14.64 GiB peak on the Spark.** Not covered: CUDA context size on a
   real Ada card (counted inside used_memory on GB10; may differ), concurrent embed requests (sent one at a time; vLLM's
   workspace is preallocated, so the peak should not move), retrieval quality on the user's pages.
+- 2026-10-06T12:30Z `review` adversarial review of E12 (subagent). Accepted: (a) **correction: "the embedder's memory is
+  fixed at startup" was wrong**: v1 / v2 grew 6,107 -> 6,733 MiB (+626 MiB) on first use; v4's idle was taken after the
+  over-length probe, so "peak = idle" there was true by construction. (b) untested: two concurrent embedding requests
+  (server allows max_num_seqs 2), startup / load peaks (sampling began after both servers were up), bigger Clef
+  question sets (only 3 questions). (c) "can share a 16 GB Ada GPU" overclaims a 0.36 GiB margin measured on GB10;
+  supportable: "summed per-process peak 14.64 GiB on a Spark under single-stream 8k load". (d) over-length: wording
+  narrowed to "an over-length request with truncate_prompt_tokens did not return within 90 s (twice); 14.7k tokens
+  should take ~3.7 s at 3,965 tokens/s, so a stall, cause undiagnosed". Gate / load definitions were not loosened (no
+  post-hoc favouring). v5 (spark/e12_v5.sh) measures (b) with the gate unchanged.

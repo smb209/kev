@@ -1,0 +1,8 @@
+(EngineCore pid=190) INFO 10-05 19:53:27 [adapters.py:223] Mapping weights to Qwen3Model as they are relative to this model instead of Qwen3ForEmbedding.
+(EngineCore pid=190) INFO 10-05 19:54:13 [default_loader.py:430] Loading weights took 45.97 seconds
+(EngineCore pid=190) WARNING 10-05 19:54:13 [kv_cache.py:147] Using KV cache scaling factor 1.0 for fp8_e4m3. If this is unintended, verify that k/v_scale scaling factors are properly set in the checkpoint.
+(EngineCore pid=190) INFO 10-05 19:54:14 [gpu_model_runner.py:5512] Model loading took 4.41 GiB memory and 46.474619 seconds
+(EngineCore pid=190) INFO 10-05 19:54:40 [gpu_worker.py:492] Initial free memory 115.17 GiB, reserved 1.25 GiB memory for KV Cache as specified by kv_cache_memory_bytes config and skipped memory profiling. This does not respect the gpu_memory_utilization config. Only use kv_cache_memory_bytes config when you want manual control of KV cache memory size. If OOM'ed, check the difference of initial free memory between the current run and the previous run where kv_cache_memory_bytes is suggested and update it correspondingly.
+(EngineCore pid=190) INFO 10-05 19:54:40 [kv_cache_utils.py:1869] GPU KV cache size: 18,192 tokens, Maximum concurrency for 8,192 tokens per request: 2.22x
+(EngineCore pid=190) INFO 10-05 19:54:40 [gpu_worker.py:695] Cleared 0.76 GiB of cached CUDA allocator memory before KV cache allocation.
+(EngineCore pid=190) INFO 10-05 19:54:43 [core.py:345] init engine (profile, create kv cache, warmup model) took 29.49 s (compilation: 24.80 s)
