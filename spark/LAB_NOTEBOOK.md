@@ -575,3 +575,16 @@ max_model_len 8192, KV pinned with --kv-cache-memory-bytes, max_num_seqs small) 
   to ~8,108 tokens (261 x paragraph; 6.45 chars/token calibrated from v2), no server-side truncation, assert prompt
   tokens in [7,892, 8,192]; plus an over-length probe (90 s timeout, with and without truncate_prompt_tokens) with
   logs and a health check, because a pooling request that hangs instead of erroring matters for the user's crawler.
+- 2026-10-06T11:30Z `run` E12 v4 (runs/spark/e12/corun-v4.json): embed prompt tokens 8,105-8,112 (assert passed), real
+  compute 3,965 tokens/s, 2.10 s median; Clef usage.input_tokens = 8,192 on every request (state + schema exceed its
+  max_length, so it ran at its cap: worst case), 8.22 s median. Peak per process: embed 6,733 MiB (= its post-warmup
+  idle: vLLM sizes everything at start), Clef 8,254 MiB. **Peak sum 14,987 MiB = 14.64 GiB <= 15.0: pass**, margin
+  0.36 GiB. 0 errors (embed 87, Clef 22).
+- 2026-10-06T11:30Z `finding` (vLLM 0.27.2rc1, sparkrun-eugr-vllm-tf5) **an over-length pooling request WITH
+  truncate_prompt_tokens hangs (no response; 90 s timeout here, 600 s in v3); WITHOUT it the server answers 400 at
+  once; health stays 200.** (runs/spark/e12/overlength-probe.txt.) Deployment rule: chunk client-side below
+  max_model_len; do not rely on truncate_prompt_tokens on this build (check the user's version).
+- 2026-10-06T11:30Z `finding` (pending review) **E12: Qwen3-Embedding-4B (FP8, FP8 KV, 8k, KV pinned 1.25 GiB) and
+  text-only FP8 Clef-Flash (8k) run together at a 14.64 GiB peak on the Spark.** Not covered: CUDA context size on a
+  real Ada card (counted inside used_memory on GB10; may differ), concurrent embed requests (sent one at a time; vLLM's
+  workspace is preallocated, so the peak should not move), retrieval quality on the user's pages.

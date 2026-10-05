@@ -1,0 +1,41 @@
+{
+ "tokens": 8192,
+ "seconds": 180,
+ "embed_prompt_tokens": {
+  "min": 8105,
+  "max": 8112,
+  "n": 88
+ },
+ "embed_tokens_per_s": 3965,
+ "clef_input_tokens": {
+  "min": 8192,
+  "max": 8192,
+  "n": 23
+ },
+ "idle_sum_mib": 13817,
+ "idle_procs": {
+  "4151375": 6733,
+  "4152991": 7084
+ },
+ "peak_per_pid_mib": {
+  "4151375": 6733,
+  "4152991": 8254
+ },
+ "peak_sum_mib": 14987,
+ "peak_sum_gib": 14.64,
+ "pass_15_gib": true,
+ "load": {
+  "embed": {
+   "ok": 87,
+   "err": 0,
+   "median_s": 2.098975419998169,
+   "p95_s": 2.113468647003174
+  },
+  "clef": {
+   "ok": 22,
+   "err": 0,
+   "median_s": 8.219717741012573,
+   "p95_s": 8.244181632995605
+  }
+ }
+}
