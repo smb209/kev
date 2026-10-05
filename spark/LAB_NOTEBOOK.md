@@ -627,3 +627,29 @@ max_model_len 8192, KV pinned with --kv-cache-memory-bytes, max_num_seqs small) 
   (pre-registered rule met: median cosine >= 0.99 and top-1 >= 95 %). Caveats: the query task is easy (prefix of its own
   document), which inflates top-1; top-10 overlap 91.6 % shows deeper ranks shuffle slightly; complaint narratives, not
   webpages. The user's own query set remains the real test.
+
+**E13 deployment on haumea (RTX 4060 Ti 16 GB, sm_89), user-approved 2026-10-06 ("go for it, leave it running").**
+haumea: RTX 4060 Ti (GPU 0, the embedder) + RTX 5090 (GPU 1, Qwen3.8-27B NVFP4, not touched). Original embedder captured
+from the live process: Qwen3-Embedding-8B FP8, max-model-len 32768, max-num-seqs 16, gpu-memory-utilization 0.93
+(-> the 15.9 GB). Traffic (8 days of log): ~7,300 requests, KV use 0.0 % at every log line, <= ~28 tokens/s windows.
+- 2026-10-06T16:33-16:48 (haumea clock) `hazard` / `correction`: the switch cost ~2 min planned + ~10 min unplanned
+  embedding downtime (16:37:29-16:47:12), all from differences between my non-interactive launch and the user's
+  interactive one: (1) CUDA_DEVICE_ORDER=PCI_BUS_ID missing -> CUDA_VISIBLE_DEVICES=0 picked the 5090 -> OOM;
+  (2) vLLM shut down when the launching ssh session closed despite nohup -> setsid; (3) no `conda activate` ->
+  FlashInfer's runtime nvcc builds used Ubuntu 26.04 glibc headers (`rsqrt` exception-specification error) ->
+  EngineDeadError on the first request. My intermediate diagnoses were wrong twice ("no nvcc on the box"; then "PATH
+  only"): nvcc exists in the conda env, and the activation scripts (gcc toolchain + nvcc headers) are what matter. The
+  original 8B config failed identically without activation (16:41) and worked with it (16:47): the fix is proven.
+  Also: FlashInfer could not build its FP8-KV (e4m3) prefill kernel for sm_89 here even with the conda toolchain path
+  -> bf16 KV, pinned 1.25 GiB, max_num_seqs 1 (same memory as E12). The Spark tests never saw any of this (CUDA
+  installed system-wide, single GPU, FP8 KV kernels building fine on sm_121).
+- 2026-10-06T16:56 `run` real-card co-residency (haumea, 180 s, 1 embed stream + Clef alternating 3 / 10 questions,
+  8,105-8,112-token embeds, 8,192-token Clef inputs; spark/haumea-corun-4060.json): **whole-card memory.used peak 14,856
+  of 16,380 MiB (1.49 GiB headroom)**, per-process 6,638 (embed) + 8,184 (Clef); 0 errors (59 / 22); embed 3.10 s per 8k
+  chunk under contention (1.45 s alone; the 8B took 2.08 s alone). Clef-Flash on Ada: fp32 GEMM output accepted (the
+  fallback is not needed); answers 0.9225 / 0.9409 / 1.3015 vs Spark 0.9179 / 0.9506 / 1.3298 (within a few hundredths,
+  as predicted). Over-length probe deliberately not run on production (could wedge the single sequence slot).
+- 2026-10-06T17:00 `finding` **E13: Qwen3-Embedding-4B (FP8 weights, bf16 KV, 8k, 1 seq) + text-only FP8 Clef-Flash run
+  together on the user's RTX 4060 Ti at a 14.86 GB peak of 16.38 (1.5 GiB headroom), deployed and left running.**
+  Run book on haumea: /home/scott/ai-stack/README.md (copy: spark/haumea-ai-stack-README.md); rollback to the 8B tested.
+  Not set up: start at boot (needs the user's say; the old 8B was also manual).

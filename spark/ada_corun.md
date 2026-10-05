@@ -1,5 +1,11 @@
 # Qwen3-Embedding-4B + Clef-Flash on one 16 GB Ada card
 
+> **Deployed on haumea's RTX 4060 Ti on 2026-10-05; the run book there (`/home/scott/ai-stack/README.md`, copy in
+> `spark/haumea-ai-stack-README.md`) supersedes the commands below.** On that card FlashInfer could not build its FP8-KV
+> kernel, so the embedder runs a **bf16 KV cache with `--max-num-seqs 1`** (same 1.25 GiB pin), and both servers must be
+> launched under `conda activate`, with `CUDA_DEVICE_ORDER=PCI_BUS_ID` and `setsid`. Measured there: 14,856 of 16,380
+> MiB peak, 1.5 GiB headroom.
+
 Measured on a DGX Spark (E12 in `spark/LAB_NOTEBOOK.md`): together the two servers peaked at **14.64 GiB** of GPU memory,
 including startup, two concurrent 8k embedding requests and 10-question Clef requests. That leaves about 0.4 GiB below a
 15.0 GiB budget. It has **not** been run on an Ada card, whose CUDA contexts may be larger, so check `nvidia-smi` as
