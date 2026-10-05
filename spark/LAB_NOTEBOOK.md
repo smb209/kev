@@ -569,3 +569,9 @@ max_model_len 8192, KV pinned with --kv-cache-memory-bytes, max_num_seqs small) 
   is still untested (more activation memory on both sides). Embed peak barely moved from v1 (6,733 vs 6,735 MiB)
   despite real prefills: vLLM's workspace is sized at startup. v3: overshoot the text, both servers truncate to
   exactly 8,192, assert embed prompt_tokens == 8,192 and record Clef usage.input_tokens.
+- 2026-10-06T10:30Z `run` E12 v3 failed: the first warm-up embedding request (~14.7k tokens of text with
+  truncate_prompt_tokens=8192, max_model_len 8192) got no response for 600 s (urllib timeout); server logs lost
+  (containers --rm, stopped by the script: harness gap, now fixed: logs saved before stop). v4: text sized client-side
+  to ~8,108 tokens (261 x paragraph; 6.45 chars/token calibrated from v2), no server-side truncation, assert prompt
+  tokens in [7,892, 8,192]; plus an over-length probe (90 s timeout, with and without truncate_prompt_tokens) with
+  logs and a health check, because a pooling request that hangs instead of erroring matters for the user's crawler.

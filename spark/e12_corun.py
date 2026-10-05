@@ -45,15 +45,15 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--embed", required=True); ap.add_argument("--clef", required=True)
     ap.add_argument("--embed-model", default="Qwen/Qwen3-Embedding-4B")
-    ap.add_argument("--tokens", type=int, default=8192); ap.add_argument("--seconds", type=int, default=180)
+    ap.add_argument("--tokens", type=int, default=8192); ap.add_argument("--para-repeats", type=int, default=261, help="261 x PARA ~ 8,108 Qwen3 tokens (calibrated on v2: 6.45 chars/token)"); ap.add_argument("--seconds", type=int, default=180)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
-    base = text_of(int(a.tokens * 1.8))   # overshoot: the servers truncate to --tokens (v2 undershot at ~6k)
+    base = PARA * a.para_repeats   # sized client-side just under --tokens (v3: an over-length input hung vLLM even with truncation)
     seq = iter(range(10**9)); seen = {"embed_prompt_tokens": []}
     def unique():   # a distinct document each call: a leading counter changes every token's context, so no prefix cache can reuse a prefill
         n = next(seq); return f"Document {n}: case {n * 7919 % 104729} of batch {n % 97}. " + base
     def embed():
-        r = post(f"{a.embed}/v1/embeddings", {"model": a.embed_model, "input": [unique()], "truncate_prompt_tokens": a.tokens})
+        r = post(f"{a.embed}/v1/embeddings", {"model": a.embed_model, "input": [unique()]})
         seen["embed_prompt_tokens"].append((r.get("usage") or {}).get("prompt_tokens"))
     doc = base
     def clef():
@@ -80,7 +80,7 @@ if __name__ == "__main__":
         lat = sorted(stats[n].pop("lat")); stats[n]["median_s"] = lat[len(lat) // 2]; stats[n]["p95_s"] = lat[int(len(lat) * 0.95) - 1]
     pt = [t for t in seen["embed_prompt_tokens"] if t]
     assert pt, "embedding responses carried no usage.prompt_tokens"
-    assert min(pt) == a.tokens, f"embed requests were {min(pt)}-{max(pt)} tokens, not {a.tokens}"
+    assert a.tokens - 300 <= min(pt) and max(pt) <= a.tokens, f"embed requests were {min(pt)}-{max(pt)} tokens, not ~{a.tokens}"
     ct = [t for t in seen.get("clef_input_tokens", []) if t]
     out = {"tokens": a.tokens, "seconds": a.seconds, "embed_prompt_tokens": {"min": min(pt), "max": max(pt), "n": len(pt)},
            "embed_tokens_per_s": round(sum(pt) / a.seconds),
