@@ -5,7 +5,8 @@ equivalent within known kernel drift; 1-2 % -> investigate; > 2 % or an accuracy
 
 Saved logits are already divided by the row's inference_temperature (softmax(logits) == p). Probabilities are recomputed
 at one common temperature (the reference's): raw = logits * T_row, p = softmax(raw / T_ref), so a difference in served
-temperature cannot masquerade as drift. Pairs on (id, question); refuses empty or misaligned pairings.
+temperature cannot masquerade as drift. When either read has no logits (kev.benchmark --remote saves p only), both
+sides are compared on their served probabilities instead and the output says so. Pairs on (id, question); refuses empty or misaligned pairings.
 
 usage: python spark/parity.py --reference runs/a/rows.json --candidate runs/b/rows.json [--json out.json]
 """
@@ -29,15 +30,19 @@ def parity(ref_path, cand_path, samples=2000, seed=0, clean_only=False):
     ref, cand = load(ref_path, clean_only), load(cand_path, clean_only)
     keys = sorted(ref.keys() & cand.keys())
     assert keys, f"no paired rows between {ref_path} and {cand_path}"
-    temps = {r["inference_temperature"] for r in ref.values()}
-    assert len(temps) == 1, f"reference has several temperatures {temps}"
-    t = temps.pop()
+    served = any("logits" not in r for r in (*ref.values(), *cand.values()))   # a --remote read saves p only
+    temps = {r.get("inference_temperature") for r in ref.values()}
+    assert served or len(temps) == 1, f"reference has several temperatures {temps}"
+    t = None if served else temps.pop()
     flips, dps, groups, acc_r, acc_c = [], [], [], [], []
     for k in keys:
         a, b = ref[k], cand[k]
         assert a["keys"] == b["keys"] and a["label"] == b["label"], f"misaligned row {k}"
-        pa = softmax(np.asarray(a["logits"]) * a["inference_temperature"], t)
-        pb = softmax(np.asarray(b["logits"]) * b["inference_temperature"], t)
+        if served:   # different models (or a remote read): each side's served probabilities, at its own temperature
+            pa, pb = np.asarray(a["p"], dtype=np.float64), np.asarray(b["p"], dtype=np.float64)
+        else:
+            pa = softmax(np.asarray(a["logits"]) * a["inference_temperature"], t)
+            pb = softmax(np.asarray(b["logits"]) * b["inference_temperature"], t)
         flips.append(int(pa.argmax() != pb.argmax()))
         dps.append(float(np.abs(pa - pb).max()))
         groups.append(a["group"])
@@ -62,7 +67,7 @@ def parity(ref_path, cand_path, samples=2000, seed=0, clean_only=False):
             "dp_max": float(dps.max()), "dp_p99": float(np.percentile(dps, 99)), "dp_median": float(np.median(dps)),
             "acc_reference": float(acc_r.mean()), "acc_candidate": float(acc_c.mean()),
             "acc_delta": float(acc_c.mean() - acc_r.mean()), "acc_delta_ci95": [float(lo), float(hi)],
-            "groups": len(uniq), "rows": "clean only" if clean_only else "all variants"}
+            "groups": len(uniq), "probabilities": "served (each side at its own T)" if served else f"recomputed at T={t}", "rows": "clean only" if clean_only else "all variants"}
 
 
 if __name__ == "__main__":

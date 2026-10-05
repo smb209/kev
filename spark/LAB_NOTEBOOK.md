@@ -324,3 +324,20 @@ leaderboard (Decision Index 0.2.1); their training data is undisclosed, so conta
   seed1-vs-seed2 spread (0.8-1.7 pp). Effect check (same-environment gains from the Spark init read): hard-v1 +24.3 pp
   (H200 +24.4, 100 %), documents-v1 +20.9 pp (H200 +21.0, 99 %); bar was >= 80 %. Forward-token count differs from the
   H200 run by 147 of 15.5M (augmentation RNG on a different torch build), so the runs are not bit-identical, as expected.
+- 2026-10-05T14:30Z `tool` spark/parity.py: when either read lacks logits (kev.benchmark --remote saves p only), both
+  sides are compared on their served probabilities (each at its own T) and the output says so. Controls re-run
+  (ref vs itself 0 / 0; ref vs e2-bf16-semif 0 flips, p99 0.0078: unchanged).
+- 2026-10-05T14:30Z `run` E8 arms (spark-1: clef-flash, clef via spark/clef_server.py in kev-spark-quant, kev.benchmark
+  --remote; spark-2: kev-9b, kev-27b in venv; kev-27b semif / decision-v7 reused from E2, same venv build). Clef loads in
+  372 s, 51.2 GiB GPU; Clef-Flash 140 s, 17.8 GiB. Report clean accs (n): transfer-v9 (1,046) Kev-27B 0.8212, Clef
+  0.8184, Kev-9B 0.7801, Clef-Flash 0.8002; semif (144) 0.9653 / 0.9306 / 0.9167 / 0.9028; decision-v7 (1,264) 0.8631 /
+  0.8774 / 0.8742 / 0.8853; hard-v1 (1,083) 0.9104 / 0.7572 / 0.8126 / 0.6491; devtools-v1 (1,074) 0.7551 / 0.7188 /
+  0.7728 / 0.6611; documents-v1 (920) pending / 0.8793 / 0.9022 / 0.8587.
+- 2026-10-05T14:30Z `finding` **E8 primary (transfer-v9 dev, all 1,264 rows, paired, served probabilities): no
+  detectable difference in either pair.** Clef vs Kev-27B: 0.7785 vs 0.7816, -0.32 pp [-2.64, +1.81], 269 flips.
+  Clef-Flash vs Kev-9B: 0.7611 vs 0.7492, +1.19 pp [-1.10, +3.50], 291 flips (clean-only +1.82 [-0.35, +4.12]). The
+  models disagree on 21-23 % of questions, so the near-equal means hide different strengths (per source, n 80-200;
+  12 per none/permuted cell): Kev far better when the right option is removed (none_absent: Kev-27B 1.00 vs Clef 0.58
+  on each of mmlu / sciq / emotion; Kev trains with none-of-the-above augmentation) and on buried states (0.70 vs
+  0.61); Clef better on sciq / paws / emotion / legacy_holdout / tweet_offensive; Clef-Flash beats Kev-9B on MMLU-Pro
+  (0.645 vs 0.590) and mmlu (0.85 vs 0.725). Subgroup readings are post hoc and low-n: context, not findings.
