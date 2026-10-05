@@ -369,3 +369,24 @@ leaderboard (Decision Index 0.2.1); their training data is undisclosed, so conta
   (-0.3 pp [-2.7, +2.1], equivalent within ~3 pp) and Clef-Flash leads Kev-9B by +2.0 pp [-0.4, +4.5], not
   significant; the suite leans toward Kev, so Clef is if anything understated. On Kev's own training distributions Kev
   leads by 4-16 pp. Cloudflare's card is untested here.**
+
+**E9 breadth-v1 card comparison (pre-registered 2026-10-05T17:00Z, before the rebuild or any read).** breadth-v1
+(14 of the Decision Index 0.2 datasets; dev 1,990 records / 3,075 q) is private upstream; rebuild with
+scripts/build_breadth_v1.py on spark-1, **accepted only if development.jsonl sha256 = 9aad8f4a...** (manifest). Partitions
+are licence-restricted (SATA-Bench NC, SGD SA, Humicroedit / cfcolor unlicensed): gitignored, kept on the Sparks, never
+pushed; only aggregate reports are committed. Development partition only (test is locked).
+- Positive controls: Spark reads of Kev-27B v2 and Kev-9B v2 vs committed H200 rows (runs/r23-27b-k-w85-breadth = v2
+  weights; runs/fam-9bnew-breadth = r18-9b trial = v2) must pass E2's parity rule (flips <= 1 %, p99 dp <= 0.05; long
+  states here may push flips up, report if 1-2 %).
+- Arms: Clef, Clef-Flash (Spark, remote harness as E8), Kev-27B v2, Kev-9B v2 (Spark); context only: Kev-9B v1
+  (runs/fam-9b-breadth, H200) and Jev (runs/breadth-v1-jev, committed rows).
+- **Primary: the card's per-dataset direction.** For each of the 14 datasets and each card pair (Clef vs Kev 9B;
+  Clef-Flash vs Kev 9B; their "Kev 9B" version is unknown, so read against v2 and, as context, v1): "reproduces" if our
+  paired delta (dataset's metric: accuracy or case-exact, as breadth_report scores it; record-clustered bootstrap) has
+  the card's sign with the 95 % CI excluding 0; "contradicted" if the CI excludes 0 with the opposite sign; else
+  "unresolved". Card ties (|card delta| < 2 points: RouterBench) are tested for no difference only. Count each class.
+  Scores are NOT compared to the card's absolute numbers (breadth-v1 restricts candidate sets; its docstring says scores
+  are not comparable to the Index's).
+- Secondary: breadth_report's chance-corrected index (5 areas) per system; Clef vs Kev-27B per dataset (same base).
+- Caveat set in advance: breadth-v1's mapping onto Kev's question format may itself suit Kev (it was built for Kev's
+  API); and per-dataset n is 150 records, so per-dataset MDE is large (~8-10 pp).
