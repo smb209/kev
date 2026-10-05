@@ -253,3 +253,12 @@ report nvfp4-fused vs nvfp4-unfused flips (does fusion change the quantized answ
   below both the bandwidth (~21x) and compute (~12x) ratios, so the H200 trial was itself far from either roof (small
   model, overhead-bound) and no roofline explains the gap. Training-speed cause: open (low priority; 7x is usable).
   The 00:30Z entry stays as written; read it through this one.
+- 2026-10-05T06:30Z `run` E5 init reads on spark-1 (kev-0.8b@night2-du-release, venv, exact fp32 path,
+  spark/e5_reads.sh; runs/spark/e5/init-*): decision-v7 0.8252, documents-v1 0.6326, hard-v1 0.3490, devtools-v1 0.4879.
+  H200 parent reads (runs/night2-08b-du2 result.json, runs/dt1-P08, runs/r15-readout/round15.json parent accs): 0.8252 /
+  0.6326 / 0.34995 / 0.4869 (round15 readout; dt1-P08 report 0.4879 on 1,074 q). Same to 4 decimals: the fp32 0.8B read
+  reproduces across H200 and GB10.
+- 2026-10-05T06:30Z `reference` (found before the E5 result exists; does not change the E5 rule) H200 seed variance for
+  this exact recipe: round 15 arm 08b-c = trial 2 (seed 2, same config). Seed 1 vs seed 2 dev accs: hard-v1 0.5937 vs
+  0.5845 (-0.9 pp), documents-v1 0.8424 vs 0.8348 (-0.8), devtools-v1 0.6017 vs 0.5849 (-1.7). n = 2 seeds, so a range,
+  not an sd: the pre-registered +/-2 pp tolerance is about one seed-to-seed difference. Read E5's deltas against it.
