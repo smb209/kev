@@ -538,3 +538,17 @@ added latency of CPU gathers (median / p95 vs E10 FP8 on transfer-v9).
   32k ~7.4 GiB + Clef-Flash text-only peak 8.9 GiB at 16k + two CUDA contexts ~1 GiB = ~17.3 GiB -> **does not fit**.
   With the embedder at 8k chunks (FP8 KV 0.56 GiB, ~5.7 GiB) and Clef-Flash capped near 8k tokens (~7.8 GiB, between
   the measured 7.6 @ 6.6k and 8.9 @ 16k) -> ~14.5 GiB: fits, tight. Needs a measured co-residency test before any claim.
+
+**E12 co-residency on a simulated 16 GB card (pre-registered 2026-10-06T07:30Z, before any run).** User accepts chunking
+and re-embedding. Plan under test: Qwen3-Embedding-4B served by vLLM (FP8 weights via online quantization, FP8 KV cache,
+max_model_len 8192, KV pinned with --kv-cache-memory-bytes, max_num_seqs small) + text-only FP8 Clef-Flash
+(clef_server --host-embeddings --text-only, --max_length 8192, expandable_segments) as two processes on spark-1.
+- Measure: each process's GPU memory (nvidia-smi per-process used_memory, which includes its CUDA context) at idle,
+  then at peak under concurrent load: 8,192-token embedding requests and 8,192-token Clef-Flash requests interleaved
+  for 3 minutes. Record the peak sum.
+- **Pass = peak sum <= 15.0 GiB** (a 16 GB Ada card shows ~15.6 GiB usable after the display and driver; 0.6 GiB margin).
+  > 15.0 -> report by how much and which knob (KV bytes, max_num_seqs, Clef max_length) closes it.
+- Context, not gate: FP8 vs bf16 Qwen3-Embedding-4B embedding agreement (cosine on 200 chunks of evals/documents-v1
+  states, 8k max) and throughput (chunks/s) while Clef-Flash is loaded.
+- Not covered and stated: Ada kernels and CUDA context size on the real card (GB10 contexts may differ in size);
+  retrieval quality on the user's own webpages (needs their queries; the 8B -> 4B gap is the card's -1.0 Eng v2).
