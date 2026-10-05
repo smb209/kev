@@ -129,3 +129,11 @@ uv run python -m kev.benchmark --remote http://<ada-host>:8031 --remote-model Cl
 
 Do not copy licence-restricted suites (breadth-v1) to the Ada box. Scoring them remotely sends request bodies (state and
 questions) to the server, which is the same exposure as any remote read. Decide that before you run one.
+
+
+## Which FP8 GEMM path your card took
+
+`GET /v1/models` reports `fp8 GEMM output float32` or `fp8 GEMM output bfloat16`. Both were read on the Spark against bf16
+Clef-Flash over 5,697 questions: float32 +0.07 pp [-0.18, +0.32], bfloat16 fallback +0.02 pp [-0.23, +0.26]. The
+expected smoke answers above come from the float32 path; on the bfloat16 path expect differences of up to a few
+hundredths in probability (the two paths flip 53 of 5,697 answers between them), not identical numbers.

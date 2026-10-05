@@ -514,3 +514,14 @@ tower (text-only server; requests with images / videos get a 422). Expected GPU 
 so **pre-registered expectation: probabilities bit-identical to the E10 FP8 export on transfer-v9 dev (0 flips, max
 dp 0)**; any difference is a bug, not a result. Also: memtest at the same 15.0 GiB cap (peak at 16k tokens) and the
 added latency of CPU gathers (median / p95 vs E10 FP8 on transfer-v9).
+- 2026-10-06T06:00Z `run` E10b / E11a (spark-1; spark-1's checkout first failed to pull twice because untracked copies
+  of committed scripts blocked the merge: hazard, now cleared). Full transfer-v9 identity reads vs E10 FP8 rows
+  (1,264 rows): (i) default mode after the GEMM-output probe change: **0 flips, max dp 0**; (ii) **E11a host-resident
+  embeddings + text-only (6.68 GiB GPU weights): 0 flips, max dp 0**, pre-registered expectation met.
+  (iii) forced bf16-output fallback (FP8_GEMM_OUT=bfloat16, the path an sm_89 without fp32 GEMM output would take):
+  vs bf16 Clef-Flash pooled 5,697 q **+0.02 pp [-0.23, +0.26]** (transfer-v9 -0.09 [-0.78, +0.59], breadth-v1 +0.10
+  [-0.26, +0.49], decision-v7 -0.07 [-0.36, +0.21]), 64 flips; vs fp32-out FP8 -0.05 [-0.28, +0.18], 53 flips
+  (runs/spark/e10/readout-bf16out-fallback.json).
+- 2026-10-06T06:00Z `finding` **E10 / E11a: text-only FP8 Clef-Flash runs in 6.7 GiB of GPU weights (8.9 GiB allocator
+  peak at 16k tokens), answers bit-identical to the 11.3 GiB FP8 build, no accuracy loss beyond 0.18 pp vs bf16 (or
+  0.23 pp on the bf16-output fallback path).** Untested: the Ada card itself, image input (refused in text-only mode).
