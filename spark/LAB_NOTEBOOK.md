@@ -615,3 +615,15 @@ max_model_len 8192, KV pinned with --kv-cache-memory-bytes, max_num_seqs small) 
   median cosine >= 0.99 AND top-1 agreement >= 95 %. Otherwise: recommend FP8 weights with bf16 KV, which pins
   ~2.5 GiB of KV instead of 1.25 and breaks the 15.0 GiB co-residency bar (~15.8 GiB), so the plan would need 4k chunks
   or a 1-sequence KV pin instead (to be re-measured, not assumed).
+- 2026-10-06T14:30Z `hazard` first quality run: the FP8 vLLM server died at startup while the bf16 one was still up
+  (two vLLM instances on one GPU at once: a setup the co-residency runs never used; logs lost to --rm; host python3 also
+  lacked numpy). Fixed: one server at a time, embeddings dumped to disk and compared offline, containers kept for logs,
+  venv python.
+- 2026-10-06T14:30Z `run` E12 quality (runs/spark/e12/quality/quality.json; 300 documents-v1 states <= 30k chars;
+  queries = each document's first 300 characters with the Qwen web-search instruction): Qwen3-Embedding-4B FP8 weights +
+  FP8 KV (unit scale) vs bf16: **median cosine 0.9938** (min 0.9834, mean 0.9934), **top-1 agreement 99.0 %**, top-10
+  overlap 91.6 %, self-retrieval 97.3 % both. Model weights 4.41 GiB (FP8) vs 7.56 GiB (bf16), per vLLM's log.
+- 2026-10-06T14:30Z `finding` **FP8 weights + FP8 KV leave Qwen3-Embedding-4B's embeddings intact at this resolution**
+  (pre-registered rule met: median cosine >= 0.99 and top-1 >= 95 %). Caveats: the query task is easy (prefix of its own
+  document), which inflates top-1; top-10 overlap 91.6 % shows deeper ranks shuffle slightly; complaint narratives, not
+  webpages. The user's own query set remains the real test.

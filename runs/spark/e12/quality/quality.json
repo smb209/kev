@@ -1,0 +1,11 @@
+{
+ "documents": 300,
+ "cosine_min": 0.9833813234494193,
+ "cosine_median": 0.993760562088984,
+ "cosine_mean": 0.9933767812835508,
+ "top1_agreement": 0.99,
+ "top10_overlap": 0.916,
+ "self_retrieval_ref": 0.9733333333333334,
+ "self_retrieval_cand": 0.9733333333333334,
+ "harmless_by_rule": true
+}
