@@ -9,25 +9,19 @@ Boxes: spark-1 (192.168.50.10), spark-2 (192.168.50.11). Branch `spark-investiga
 
 ## §1 Where we are
 
-2026-10-05 ~10:00Z (written before a Mac reboot; resume from here; resumed ~10:40Z, E5 at step 2,160). Done: E1-E4b, E6, E7 (see §3, §5). Running on
-spark-2 in tmux: `e5full` (E5 Kev-0.8B reproduction, step 1,950 / 2,818 at 0.74 s/rec, ~1.8 h left; log
-runs/spark/e5-r15-08b-s1/train.log) and `e5read` (waits for checkpoint/training_metrics.json, then runs
-spark/e5_reads.sh on the 4 dev panels into runs/spark/e5/spark-*; prints E5READDONE in runs/spark/e5read.log).
-**Next step after E5READDONE:** copy spark-2:~/kev/runs/spark/e5/spark-* to the Mac and score per the E5 pre-registration:
-`bash spark/parity_brief.sh <H200 rows> runs/spark/e5/spark-<panel>/rows.json` with H200 rows
-runs/r15-08b/00-trial-0/development/rows.json (decision-v7) and runs/r15-08b-a-{docs,hard,devtools}/rows.json; gains
-vs init: Spark init accs in runs/spark/e5/init-* (copied), H200 init accs in runs/r15-readout/round15.json (08b-a
-parent). Yardstick: H200 seed1 vs seed2 differ 0.8-1.7 pp. Then: adversarial review of E5, final write-up.
-Local copies of E2/E4 rows are in runs/spark/ (untracked) and also on spark-1:~/kev/runs/spark/.
+2026-10-05 21:30Z. All planned experiments done and reviewed: E1-E4b (27B serving, parity, quantization), E5
+(fine-tune reproduction), E6-E7 (fine-tune throughput), E8-E9 (Clef vs Kev; E9 on breadth-v1 rebuilt locally, rows
+never pushed). Nothing running. Open: a write-up; optional next experiments (§2).
 
 ## §2 Open items, ranked
 
-1. E1: Kev-27B v2 bf16 loads and serves on one Spark (memory headroom).
-2. E2: parity of the Spark bf16 read against the H200 release-verify rows (decision-v7 dev, transfer-v4 dev, semif-v1).
-3. E3: serving latency / throughput (scripts/serving_bench.py) vs runs/fused-27b-h100/h200.
-4. E4: quantization (FP8 / NVFP4) of Kev-27B v2 built here from the official bf16 weights; accuracy vs E2's bf16 read.
-5. E5: LoRA fine-tune of Kev-0.8B / 4B on the Spark (throughput, memory, a smoke-quality delta).
-6. Guide verification (§4).
+1. Write-up of the investigation for sharing.
+2. Fine-tuning Clef-Flash on our data (does its release ship training code? same E5-style reproduction impossible
+   without a reference run; would need its own pre-registration).
+3. A fair latency comparison Clef vs Kev on identical request shapes through one serving harness (E8 latencies are
+   not comparable: different paths).
+4. NVFP4 calibration at larger n (ECE unresolvable at 2,484 q) and long states (> 2.2k tokens) under quantization.
+5. Kev-9B NVFP4 (only 27B and 4B were quantized).
 
 ## §3 Closed findings
 
@@ -44,6 +38,11 @@ Local copies of E2/E4 rows are in runs/spark/ (untracked) and also on spark-1:~/
   ~7x slower than the H200 trial (0.103); cause open (the bandwidth-bound explanation was retracted 05:45Z).
 - **Spark LoRA training reproduces the released Kev-0.8B round-15 stage** (E5): all four dev panels within 0.2 pp of
   the H200 checkpoint, 99-100 % of its gains; 6.2 h vs 52 min, same 23.9 GB peak.
+- **Clef vs Kev** (E8, E9, both reviewed): on transfer-v9 (Kev-held-out) Clef ~= Kev-27B (-0.3 pp [-2.7, +2.1]),
+  Clef-Flash +2.0 pp [-0.4, +4.5] over Kev-9B; on breadth-v1 (Decision-Index datasets) Clef +10.5 [7.5, 13.6] index
+  points over Kev-27B, Clef-Flash +22.4 [19.3, 25.9] over Kev-9B (~+5 / +14 without the five most suspect datasets);
+  the card's directions reproduce on 8/14 and 6/14 datasets, its magnitudes do not. Kev leads 4-16 pp on its own
+  training distributions. Clef's training data is undisclosed.
 - **Kev-4B LoRA fine-tuning fits a Spark (peak 20-56 GB)**; the kev-finetune skill's default job shape takes ~38 min
   (~27 min with --length_sort 1) (E6, E7).
 
@@ -437,3 +436,9 @@ pushed; only aggregate reports are committed. Development partition only (test i
   construction (SGD NONE option, 10-way CLINC, RouterBench name prior). Index-style: Clef +10.5 [7.5, 13.6] over
   Kev-27B v2, Clef-Flash +22.4 [19.3, 25.9] over Kev-9B v2; ~+5 / +14 without the five most suspect datasets. Jev and
   Kev-27B not separated. OOD for Kev; Clef's exposure unknown.**
+- 2026-10-05T21:30Z `check` **remote scoring path positive control passes** (closes E8 / E9 review gap): Kev-9B v2 served
+  by kev.serve (KEV_DTYPE=fp32, unfused, no graphs) on spark-2 and read with `kev.benchmark --remote` on breadth-v1 dev
+  vs its in-process read (runs/spark/e8/kev-9b-breadth-v1): 3,075 paired, **0 flips, max dp 0.0010, p99 0.0005**, acc
+  0.6995 = 0.6995, 0 rejected / truncated. The remote harness (api_request -> /v1/systemone -> RemotePredictor) carries
+  the same information and maps probabilities faithfully. Clef's own encode path (clef_server.py) is not covered by this
+  control; its 0 rejections and high accuracy rule out gross mapping errors.
