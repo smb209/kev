@@ -42,6 +42,8 @@ Local copies of E2/E4 rows are in runs/spark/ (untracked) and also on spark-1:~/
   than ~0.4 pp. ECE not resolvable at n 2,484 (E4 review correction).
 - **The causal-conv fallback is not why Spark training is slow** (E5 A/B); training runs ~0.72 s/record for Kev-0.8B,
   ~7x slower than the H200 trial (0.103); cause open (the bandwidth-bound explanation was retracted 05:45Z).
+- **Spark LoRA training reproduces the released Kev-0.8B round-15 stage** (E5): all four dev panels within 0.2 pp of
+  the H200 checkpoint, 99-100 % of its gains; 6.2 h vs 52 min, same 23.9 GB peak.
 - **Kev-4B LoRA fine-tuning fits a Spark (peak 20-56 GB)**; the kev-finetune skill's default job shape takes ~38 min
   (~27 min with --length_sort 1) (E6, E7).
 
@@ -311,3 +313,14 @@ leaderboard (Decision Index 0.2.1); their training data is undisclosed, so conta
   distributions (Kev home field; differences there say little about generality). semif-v1 is saturated (report only).
 - Also reported, not judged: ECE (noise floor per E4 review), latency on the Spark at concurrency 1 (Clef through its
   own eager path; Kev through kev.serve E3 numbers), memory. Image input is out of scope for Kev, so not compared.
+- 2026-10-05T12:30Z `run` e5-r15-08b-s1 finished (spark-2): 2,818 steps, 30,329 records, 15,531,569 forward tokens
+  (H200 trial: 15,531,716; 30,329; 2,818), **wall 22,241 s = 6.2 h (H200 3,136 s; 7.1x)**, peak device 23.9 GB (H200
+  23.9 GB), MemAvailable min 78 GB, no hang. Reads (spark/e5_reads.sh, runs/spark/e5/spark-*) vs the H200 checkpoint's
+  rows (clean): decision-v7 0.8267 -> 0.8275 (+0.08 pp [-0.40, +0.55], 11 flips); documents-v1 0.8424 -> 0.8413 (-0.11
+  [-0.76, +0.54], 9); hard-v1 0.5937 -> 0.5919 (-0.18 [-1.28, +0.91], 48 flips, 4.4 %); devtools-v1 0.6021 -> 0.6030
+  (+0.09 [-0.73, +0.90], 28; 1,073 paired: the suite's duplicated CodeReviewer id drops one row).
+- 2026-10-05T12:30Z `finding` **E5 pass: Spark LoRA training reproduces the released Kev-0.8B stage.** Pre-registered
+  rule: every panel |delta| <= 2 pp with CI including 0 -> all four within 0.2 pp, an order of magnitude inside the H200
+  seed1-vs-seed2 spread (0.8-1.7 pp). Effect check (same-environment gains from the Spark init read): hard-v1 +24.3 pp
+  (H200 +24.4, 100 %), documents-v1 +20.9 pp (H200 +21.0, 99 %); bar was >= 80 %. Forward-token count differs from the
+  H200 run by 147 of 15.5M (augmentation RNG on a different torch build), so the runs are not bit-identical, as expected.
