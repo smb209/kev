@@ -341,3 +341,9 @@ leaderboard (Decision Index 0.2.1); their training data is undisclosed, so conta
   on each of mmlu / sciq / emotion; Kev trains with none-of-the-above augmentation) and on buried states (0.70 vs
   0.61); Clef better on sciq / paws / emotion / legacy_holdout / tweet_offensive; Clef-Flash beats Kev-9B on MMLU-Pro
   (0.645 vs 0.590) and mmlu (0.85 vs 0.725). Subgroup readings are post hoc and low-n: context, not findings.
+- 2026-10-05T15:30Z `run` E8 home-field context (Kev training distributions; paired, all variants, served p; delta =
+  Clef side - Kev side): decision-v7 Clef vs Kev-27B -0.27 pp [-1.89, +1.34] / Clef-Flash vs Kev-9B +0.07 [-1.47,
+  +1.59]; hard-v1 -15.33 [-18.19, -12.57] / -16.34 [-19.67, -12.92]; devtools-v1 -3.73 [-6.69, -0.73] / -11.18 [-14.12,
+  -8.09]; documents-v1 -3.70 [-5.89, -1.51] / -4.35 [-6.67, -2.09]; semif -1.98 [-4.03, 0.00] / -1.19 [-5.12, +2.38].
+  Kev-27B documents-v1 clean acc 0.9163 (920). As pre-registered these say little about generality: Kev trained on
+  hard-v1 / devtools-v1 / documents-v1 / decision-v7 train partitions (Kev-27B v2's SFT corpus includes them).
