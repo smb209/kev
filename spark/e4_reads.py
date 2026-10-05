@@ -22,11 +22,12 @@ ap = argparse.ArgumentParser()
 ap.add_argument("scheme", choices=kq.SCHEMES)
 ap.add_argument("--run", default="jaredpalmer/kev-27b")
 ap.add_argument("--out_root", default="runs/spark/e4")
+ap.add_argument("--fused", type=int, default=0, help="1 = kev.fused_qwen35 kernels (the serving path, E4b); CUDA graphs stay off (serve-only)")
 a = ap.parse_args()
 
 kq.Nvfp4Linear.backend = "cutlass"
 kq.set_act_quant("torch")
-kq.install(a.scheme, (), False, False, "static", 4.0, 64, None)   # benchmark path: unfused, no graphs
+kq.install(a.scheme, (), bool(a.fused), False, "static", 4.0, 64, None)   # E4: unfused benchmark path; E4b: fused
 loaded = {}
 wrapped = Checkpoint._load_torch
 
@@ -40,7 +41,7 @@ def load_once(self, tok, device, opts):
 Checkpoint._load_torch = load_once
 name = a.run.split("/")[-1]
 for suite in SUITES:
-    out = Path(a.out_root) / f"{name}-{a.scheme}-{Path(suite).name}"
+    out = Path(a.out_root) / f"{name}-{a.scheme}{'-fused' if a.fused else ''}-{Path(suite).name}"
     sys.argv = ["kev.benchmark", "--run", a.run, "--suite", suite, "--out", str(out)]
     t0 = time.time()
     kev.benchmark.main()

@@ -16,12 +16,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from kev.metrics import ece
 from parity import parity
 
+SUFFIX = ""   # "-fused" for E4b
 SUITES = ("semif-v1", "transfer-v4", "decision-v7")
 ARMS = ("fp8", "nvfp4-mlp", "nvfp4")
 
 
 def rows(root, arm, suite):
-    path = Path(root) / f"kev-27b-{arm}-{suite}" / "rows.json"
+    path = Path(root) / f"kev-27b-{arm}{SUFFIX}-{suite}" / "rows.json"
     data = json.load(open(path, encoding="utf-8"))
     assert data, f"empty {path}"
     return {(suite, r["id"], r["question"]): r for r in data}
@@ -60,11 +61,12 @@ def pooled(root, arm, samples=2000, seed=0):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", default="runs/spark/e4"); ap.add_argument("--json")
+    ap.add_argument("--root", default="runs/spark/e4"); ap.add_argument("--json"); ap.add_argument("--fused", action="store_true")
     a = ap.parse_args()
+    if a.fused: SUFFIX = "-fused"; ARMS = ("nvfp4",)
     out = {"pooled": [], "per_suite": []}
     for arm in ARMS:
-        if not all((Path(a.root) / f"kev-27b-{arm}-{s}" / "rows.json").exists() for s in SUITES):
+        if not all((Path(a.root) / f"kev-27b-{arm}{SUFFIX}-{s}" / "rows.json").exists() for s in SUITES):
             print(f"{arm}: not complete, skipped"); continue
         p = pooled(a.root, arm); out["pooled"].append(p)
         print(f"{arm:10s} pooled n={p['questions']} acc {p['acc_bf16']:.4f} -> {p['acc_arm']:.4f} delta {p['delta']*100:+.2f} pp "
@@ -72,7 +74,7 @@ if __name__ == "__main__":
               f"discordant +{p['discordant']['arm_right_bf16_wrong']}/-{p['discordant']['arm_wrong_bf16_right']}  "
               f"SERVING-GRADE={p['serving_grade']}")
         for s in SUITES:
-            r = parity(str(Path(a.root) / f"kev-27b-bf16-{s}" / "rows.json"), str(Path(a.root) / f"kev-27b-{arm}-{s}" / "rows.json"))
+            r = parity(str(Path(a.root) / f"kev-27b-bf16{SUFFIX}-{s}" / "rows.json"), str(Path(a.root) / f"kev-27b-{arm}{SUFFIX}-{s}" / "rows.json"))
             out["per_suite"].append({"arm": arm, "suite": s, **{k: r[k] for k in ("paired", "flips", "flip_rate", "dp_max", "dp_p99", "acc_delta", "acc_delta_ci95")}})
             print(f"    {s:12s} flips {r['flips']:3d} ({r['flip_rate']:.2%}) dp p99 {r['dp_p99']:.3f} max {r['dp_max']:.3f} "
                   f"delta {r['acc_delta']*100:+.2f} pp CI [{r['acc_delta_ci95'][0]*100:+.2f}, {r['acc_delta_ci95'][1]*100:+.2f}]")

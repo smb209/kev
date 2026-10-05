@@ -195,3 +195,26 @@ a stand-in for it, and a pass means "no evidence the Spark path differs", not eq
 - 2026-10-05T03:20Z `finding` (pending adversarial review) **all three quant arms meet the pre-registered serving-grade
   gate.** Resolution caveat: CI lower bounds reach -0.92 / -0.96 pp, so the NVFP4 arms are "no loss beyond ~1 pp", not
   "no loss"; single-question probabilities move by up to 0.5-0.6 under NVFP4 (thresholds must be re-frozen per scheme).
+- 2026-10-05T03:50Z `review` adversarial review of the E4 claim (subagent; full text in session; recompute script was
+  scratch). No arithmetic, pairing or leakage error (deltas, discordants, CIs recomputed from rows; calibration records
+  share no id / group / text hash / state with any read). Three problems accepted:
+  (a) **correction to my pre-registration**: the ECE criterion had no power. A perfectly calibrated model at bf16's
+  confidences scores ECE 0.0122 mean / 0.0184 p95 on n 2,484 (10-bin kev.metrics.ece; I re-simulated, 2,000 draws:
+  0.0122 / 0.0184). Every observed ECE is at or below that floor; paired bootstrap of the nvfp4 ECE delta [-0.006,
+  +0.013]. ECE is uninformative at this n; the gate's ECE clause is withdrawn as a criterion (kept as context).
+  (b) the CI clause (lower >= -2 pp) cannot bind at SE ~0.3 pp, so the gate was in effect "point >= -1 pp"; a true 1 pp
+  loss passes ~50 % of the time. Losses up to ~1 pp pooled (~2 pp on transfer-v4, the OOD suite: nvfp4 -0.92 pp, CI to
+  -2.2, 2.9 % flips) are not excluded. Clean-only reading does not change the verdict (nvfp4-mlp lower bound -1.08).
+  (c) accuracy and latency were read on kev.benchmark's unfused eager path, not the fused + CUDA-graph serving path.
+  Minor: semif variant rows carry a different group than their parents (1,496 clusters instead of 1,460); re-clustered
+  nvfp4 CI [-0.94, +0.21], immaterial.
+- 2026-10-05T03:50Z `finding` (revised) **E4: on kev.benchmark's unfused path, FP8 / NVFP4-MLP / NVFP4 Kev-27B v2 pass
+  the pre-registered point gate: pooled -0.12 / -0.40 / -0.36 pp vs same-env bf16, CIs reaching -0.40 / -0.92 / -0.96
+  pp. FP8 excludes losses beyond ~0.4 pp; NVFP4 only beyond ~1 pp (OOD suite ~2 pp). ECE not resolvable at n 2,484.**
+  Supersedes the 03:20Z wording ("serving-grade").
+
+**E4b fused-path read (pre-registered 2026-10-05T03:55Z, before the data).** Arms bf16 and nvfp4, both with
+kev.fused_qwen35 (the kernels kev.serve runs; CUDA graphs only replay the same arithmetic in bf16 up to reassociation),
+same image, same three suites, all variants. Primary: pooled acc delta nvfp4-fused vs bf16-fused, with its CI. Claim
+rule, stated as resolution not as a gate: report the interval; "no loss beyond X pp" with X = -(CI lower bound). Also
+report nvfp4-fused vs nvfp4-unfused flips (does fusion change the quantized answers?). ECE reported, not judged.
