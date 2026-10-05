@@ -28,6 +28,13 @@ device copy. Kev-27B v2 downloading. No Kev number yet.
   3-question request on a short repeated state.
 - **Spark bf16 reads equal the H200 release-verify reads within known kernel drift** (E2): flips 0 / 0.26 / 0.14 % on
   semif-v1 / transfer-v4 / decision-v7 dev, p99 |dp| <= 0.016; decision-v7 clean acc -0.16 pp (2 discordant, p = 0.5).
+- **bf16 Kev-27B on a Spark is weight-bandwidth bound, ~10-15x slower than an H200** (E3): 588 / 304 ms new / cached
+  2-question requests, 3.8 req/s at 64 clients.
+- **NVFP4 (our runtime, static scales) cuts serving latency 2.1-3.5x and memory 65.5 -> 30.6 GB** (E4 serving), and on
+  the fused path loses no more than ~0.7 pp pooled accuracy (E4b: -0.16 pp [-0.70, +0.36]); FP8 (unfused read) no more
+  than ~0.4 pp. ECE not resolvable at n 2,484 (E4 review correction).
+- **The causal-conv fallback is not why Spark training is slow** (E5 A/B); training runs ~0.72 s/record for Kev-0.8B,
+  ~7x slower than the H200 trial (0.103), consistent with memory-bandwidth limits.
 
 ## §4 DGX-SPARKS-GUIDE.md verification
 
@@ -229,3 +236,14 @@ report nvfp4-fused vs nvfp4-unfused flips (does fusion change the quantized answ
   bf16 0.021 / 0.0014 / 1 flip. Under FP4 the bucket padding of the graph path moves answers ~10x more than in bf16
   (same mechanism as the isolation check: batch-shape bf16 noise amplified by FP4 rounding). E4b reads the fused path
   without graphs; this graph-vs-eager spread is an additional serving-path noise term it does not cover.
+- 2026-10-05T05:40Z `run` E4b (spark-1, kev.fused_qwen35 on, no graphs; runs/spark/e4/*-fused-*, readout-fused.json):
+  nvfp4-fused vs bf16-fused pooled 2,484 q: acc 0.8784 -> 0.8768, **-0.16 pp, CI [-0.70, +0.36]**, discordant +18/-22;
+  ECE 0.0099 -> 0.0175 (inside the simulated noise band, mean 0.012 / p95 0.018; reported, not judged). Per suite:
+  semif -1.19 pp [-3.16, 0.00] (3 flips, n 252), transfer-v4 -0.39 [-1.33, +0.55] (12), decision-v7 +0.14 [-0.55, +0.83]
+  (26). Path effect: bf16 fused vs unfused 0 / 0 / 1 flips (p99 dp <= 0.012); **nvfp4 fused vs unfused 2 / 18 / 17 flips
+  (1.5 %), p99 dp 0.10-0.19**: the quantized answers depend on the kernel path about as much as on quantization itself.
+- 2026-10-05T05:40Z `finding` **E4b: on the fused serving path NVFP4 Kev-27B v2 loses no more than ~0.7 pp pooled
+  accuracy vs bf16 (point -0.16 pp)**, per the pre-registered resolution rule. NVFP4's divergence from bf16 (1.6 % flips)
+  is the same size as its divergence between two kernel paths (1.5 %), i.e. it behaves like rounding noise, with no
+  systematic loss detectable at this n; E4 (-0.36) and E4b (-0.16) agree within it. Not covered: the graph path's extra
+  spread (max dp 0.19 vs eager), states > 2.2k tokens, and calibration (ECE not resolvable at n 2,484).
