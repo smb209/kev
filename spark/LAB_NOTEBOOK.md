@@ -461,3 +461,22 @@ still differ: not removable here; stated). Activations: dynamic per-token scales
   record and (b) a synthetic 16,384-token-state request without OOM. Report weights GiB, peak GiB at each.
 - Not covered and stated: kernels on the real Ada card (an Ada validation read is the user's step; a script ships),
   states beyond 16,384 tokens, image / video inputs (not read in E8 / E9 either).
+- 2026-10-06T02:00Z `tool` E10 build (subagent, spark-2; spark/clef_fp8.py, clef_server.py --fp8-export, ada_validate.md,
+  ada_smoke.py; reviewed): PortableFp8Linear = rowwise reference bit for bit without bias (bias: one bf16 ulp, added in
+  fp32); 200 decoder projections FP8 (6.91 B params, 99.9 %), 48 small DeltaNet a/b projections bf16; embed + lm_head
+  (untied) 2.03 B, vision tower 0.46 B, joint head 0.12 B stay bf16. Export 11.10 GiB of tensors; load_fp8 weights 11.32
+  GiB, peak during load 11.32 GiB (bf16 model 17.8); reload = in-memory model bit for bit (1,086 tensors).
+  **Memory gate (cap 15.0 GiB via set_per_process_memory_fraction): pass.** Longest breadth-v1 record (6,587 tokens)
+  peak 12.24 GiB alloc / 12.29 reserved; 16,384-token request 13.56 / 13.66 GiB with
+  PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True (default allocator: 13.57 / 14.97 reserved, 30 MiB under the cap:
+  the setting is required, and the Ada recipe sets it). First version OOM'd on the 16k request (fp32 temporaries);
+  fixed in place with identical bits.
+- 2026-10-06T02:00Z `run` E10 reads on spark-1 (same machine / image as E8-E9 bf16 rows; export copied over the cluster
+  link, SHA256SUMS ok): **bf16 control re-read of transfer-v9 = E8 rows exactly (0 flips / 1,154, dp max 0)**.
+  spark/e10_readout.py (runs/spark/e10/readout.json): transfer-v9 (1,154, unknowable excluded) -0.17 pp [-1.04, +0.61],
+  26 flips; breadth-v1 (3,075) +0.13 [-0.20, +0.46], 32; decision-v7 (1,468) +0.14 [-0.20, +0.47], 7. **Pooled 5,697:
+  0.8315 -> 0.8322, +0.07 pp [-0.18, +0.32]**, discordant +28 / -24, flips 1.14 %, dp p99 0.079, max 0.567. Median
+  request latency through the harness (Spark, unfused): FP8 95 / 175 / 105 ms vs bf16 108 / 161 / 115 ms.
+- 2026-10-06T02:00Z `finding` (pending review) **E10: FP8 Clef-Flash (11.3 GiB) loses no accuracy beyond 0.18 pp vs
+  bf16 on 5,697 questions, and fits a 15 GiB cap at 16k-token states (with expandable_segments).** Not covered: the
+  real Ada kernels (user's step: spark/ada_validate.md), images / video, states > 16,384 tokens.
