@@ -552,3 +552,12 @@ max_model_len 8192, KV pinned with --kv-cache-memory-bytes, max_num_seqs small) 
   states, 8k max) and throughput (chunks/s) while Clef-Flash is loaded.
 - Not covered and stated: Ada kernels and CUDA context size on the real card (GB10 contexts may differ in size);
   retrieval quality on the user's own webpages (needs their queries; the 8B -> 4B gap is the card's -1.0 Eng v2).
+- 2026-10-06T08:30Z `run` E12 v1 (spark-1; runs/spark/e12/corun-v1-cached.json): vLLM log: 4B weights 4.41 GiB, KV
+  pinned 1.25 GiB (18,192 tokens, 2.22x concurrency at 8,192). Idle sum 13,191 MiB (embed 6,107 / Clef 7,084); peak
+  sum **14,727 MiB = 14.38 GiB** (embed 6,735 / Clef 7,992), 0 errors (embed 2,038 ok, Clef 42 ok; Clef 4.38 s median).
+- 2026-10-06T08:30Z `hazard` **E12 v1 is not a valid pass.** The harness sent the identical document every request:
+  embed latency 0.089 s for an "8,192-token" request = ~92k tokens/s, i.e. ~740 TFLOPS for a 4B model, impossible on
+  GB10 -> almost certainly vLLM prefix caching served repeated prompts without a full prefill, so the embedder's
+  activation peak under real (unique-chunk) load was never exercised; the token count actually processed was not
+  recorded either. Clef side valid (no prefix cache; 4.4 s per request is real compute). Fix: unique text per request
+  (counter + varied content), record usage.prompt_tokens, re-run (E12 v2). The pre-registered gate is unchanged.

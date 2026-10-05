@@ -48,9 +48,15 @@ if __name__ == "__main__":
     ap.add_argument("--tokens", type=int, default=8192); ap.add_argument("--seconds", type=int, default=180)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
-    doc = text_of(a.tokens + 800)
-    embed = lambda: post(f"{a.embed}/v1/embeddings", {"model": a.embed_model, "input": [doc], "truncate_prompt_tokens": a.tokens})
-    clef = lambda: post(f"{a.clef}/v1/systemone", {"model": "clef", "state": doc, "questions": {
+    base = text_of(a.tokens + 800)
+    seq = iter(range(10**9)); seen = {"embed_prompt_tokens": []}
+    def unique():   # a distinct document each call: a leading counter changes every token's context, so no prefix cache can reuse a prefill
+        n = next(seq); return f"Document {n}: case {n * 7919 % 104729} of batch {n % 97}. " + base
+    def embed():
+        r = post(f"{a.embed}/v1/embeddings", {"model": a.embed_model, "input": [unique()], "truncate_prompt_tokens": a.tokens})
+        seen["embed_prompt_tokens"].append((r.get("usage") or {}).get("prompt_tokens"))
+    doc = base
+    clef = lambda: post(f"{a.clef}/v1/systemone", {"model": "clef", "state": unique(), "questions": {
         "billing": {"type": "noul", "instructions": "Is this about a billing problem?"},
         "team": {"type": "choice", "instructions": "Which team should handle it?", "criteria": {"billing": "Payments", "shipping": "Deliveries", "infra": "Infrastructure"}},
         "urgency": {"type": "score", "instructions": "How urgent is this?", "criteria": ["Routine", "Urgent", "Emergency"]}}})
@@ -69,7 +75,10 @@ if __name__ == "__main__":
     peak_sum = max(s["sum_mib"] for s in samples)
     for n in stats:
         lat = sorted(stats[n].pop("lat")); stats[n]["median_s"] = lat[len(lat) // 2]; stats[n]["p95_s"] = lat[int(len(lat) * 0.95) - 1]
-    out = {"tokens": a.tokens, "seconds": a.seconds, "idle_sum_mib": max(s["sum_mib"] for s in idle),
+    pt = [t for t in seen["embed_prompt_tokens"] if t]
+    assert pt, "embedding responses carried no usage.prompt_tokens"
+    out = {"tokens": a.tokens, "seconds": a.seconds, "embed_prompt_tokens": {"min": min(pt), "max": max(pt), "n": len(pt)},
+           "embed_tokens_per_s": round(sum(pt) / a.seconds), "idle_sum_mib": max(s["sum_mib"] for s in idle),
            "idle_procs": idle[-1]["procs"], "peak_per_pid_mib": peak, "peak_sum_mib": peak_sum,
            "peak_sum_gib": round(peak_sum / 1024, 2), "pass_15_gib": peak_sum / 1024 <= 15.0, "load": stats}
     json.dump(out, open(a.out, "w"), indent=1)
