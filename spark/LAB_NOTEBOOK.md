@@ -9,7 +9,7 @@ Boxes: spark-1 (192.168.50.10), spark-2 (192.168.50.11). Branch `spark-investiga
 
 ## §1 Where we are
 
-2026-10-05 ~10:00Z (written before a Mac reboot; resume from here). Done: E1-E4b, E6, E7 (see §3, §5). Running on
+2026-10-05 ~10:00Z (written before a Mac reboot; resume from here; resumed ~10:40Z, E5 at step 2,160). Done: E1-E4b, E6, E7 (see §3, §5). Running on
 spark-2 in tmux: `e5full` (E5 Kev-0.8B reproduction, step 1,950 / 2,818 at 0.74 s/rec, ~1.8 h left; log
 runs/spark/e5-r15-08b-s1/train.log) and `e5read` (waits for checkpoint/training_metrics.json, then runs
 spark/e5_reads.sh on the 4 dev panels into runs/spark/e5/spark-*; prints E5READDONE in runs/spark/e5read.log).
@@ -41,7 +41,9 @@ Local copies of E2/E4 rows are in runs/spark/ (untracked) and also on spark-1:~/
   the fused path loses no more than ~0.7 pp pooled accuracy (E4b: -0.16 pp [-0.70, +0.36]); FP8 (unfused read) no more
   than ~0.4 pp. ECE not resolvable at n 2,484 (E4 review correction).
 - **The causal-conv fallback is not why Spark training is slow** (E5 A/B); training runs ~0.72 s/record for Kev-0.8B,
-  ~7x slower than the H200 trial (0.103), consistent with memory-bandwidth limits.
+  ~7x slower than the H200 trial (0.103); cause open (the bandwidth-bound explanation was retracted 05:45Z).
+- **Kev-4B LoRA fine-tuning fits a Spark (peak 20-56 GB)**; the kev-finetune skill's default job shape takes ~38 min
+  (~27 min with --length_sort 1) (E6, E7).
 
 ## §4 DGX-SPARKS-GUIDE.md verification
 
