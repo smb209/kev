@@ -597,3 +597,14 @@ max_model_len 8192, KV pinned with --kv-cache-memory-bytes, max_num_seqs small) 
   narrowed to "an over-length request with truncate_prompt_tokens did not return within 90 s (twice); 14.7k tokens
   should take ~3.7 s at 3,965 tokens/s, so a stall, cause undiagnosed". Gate / load definitions were not loosened (no
   post-hoc favouring). v5 (spark/e12_v5.sh) measures (b) with the gate unchanged.
+- 2026-10-06T13:30Z `run` E12 v5 (spark/e12_v5.sh; runs/spark/e12/v5/corun.json; 0.5 s nvidia-smi timeline from before
+  either server started): two concurrent embedding streams (latency 2.10 -> 4.15 s, throughput 4,055 tokens/s, so both
+  sequences were in flight), Clef alternating 3-question and 10-question x 5-option requests (input capped at 8,192
+  tokens). Startup peak (before both up) 13,191 MiB = cold idle (embed 6,107 / Clef 7,084): no startup spike
+  (kv_cache_memory_bytes skips vLLM's profiling). Embed grows to 6,733 on first use (+626 MiB, as the review said) and
+  stays there under 2 streams. **Peak sum 14,987 MiB = 14.64 GiB <= 15.0: pass**, identical to v4. 0 errors (89 / 22).
+- 2026-10-06T13:30Z `finding` (revised; supersedes 11:30Z) **E12: on a Spark, Qwen3-Embedding-4B (FP8, FP8 KV, 8k,
+  max_num_seqs 2, KV pinned 1.25 GiB) and text-only FP8 Clef-Flash (8k) peak at 14.64 GiB combined, including startup,
+  two concurrent embed streams and 10-question Clef requests.** Feasible but tight on a 16 GB card (0.36 GiB under the
+  15.0 bar); not run on Ada. Open: embedding quality under FP8 KV with unit scales (vLLM warned "KV cache scaling factor
+  1.0"); measuring now (E12 context item, pre-registered and not yet reported).
