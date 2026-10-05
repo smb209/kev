@@ -9,9 +9,16 @@ Boxes: spark-1 (192.168.50.10), spark-2 (192.168.50.11). Branch `spark-investiga
 
 ## §1 Where we are
 
-2026-10-04. Both Sparks idle. Env up on spark-1: torch 2.8.0+cu129 (aarch64) runs on the GB10 (sm_121) with a
-"max supported 12.0" warning; triton 3.8.0, fla 0.5.2. Microbenchmarks: 85 bf16 TFLOPS (8k matmul), 224 GB/s
-device copy. Kev-27B v2 downloading. No Kev number yet.
+2026-10-05 ~10:00Z (written before a Mac reboot; resume from here). Done: E1-E4b, E6, E7 (see §3, §5). Running on
+spark-2 in tmux: `e5full` (E5 Kev-0.8B reproduction, step 1,950 / 2,818 at 0.74 s/rec, ~1.8 h left; log
+runs/spark/e5-r15-08b-s1/train.log) and `e5read` (waits for checkpoint/training_metrics.json, then runs
+spark/e5_reads.sh on the 4 dev panels into runs/spark/e5/spark-*; prints E5READDONE in runs/spark/e5read.log).
+**Next step after E5READDONE:** copy spark-2:~/kev/runs/spark/e5/spark-* to the Mac and score per the E5 pre-registration:
+`bash spark/parity_brief.sh <H200 rows> runs/spark/e5/spark-<panel>/rows.json` with H200 rows
+runs/r15-08b/00-trial-0/development/rows.json (decision-v7) and runs/r15-08b-a-{docs,hard,devtools}/rows.json; gains
+vs init: Spark init accs in runs/spark/e5/init-* (copied), H200 init accs in runs/r15-readout/round15.json (08b-a
+parent). Yardstick: H200 seed1 vs seed2 differ 0.8-1.7 pp. Then: adversarial review of E5, final write-up.
+Local copies of E2/E4 rows are in runs/spark/ (untracked) and also on spark-1:~/kev/runs/spark/.
 
 ## §2 Open items, ranked
 
