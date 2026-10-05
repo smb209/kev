@@ -561,3 +561,11 @@ max_model_len 8192, KV pinned with --kv-cache-memory-bytes, max_num_seqs small) 
   activation peak under real (unique-chunk) load was never exercised; the token count actually processed was not
   recorded either. Clef side valid (no prefix cache; 4.4 s per request is real compute). Fix: unique text per request
   (counter + varied content), record usage.prompt_tokens, re-run (E12 v2). The pre-registered gate is unchanged.
+- 2026-10-06T09:30Z `run` E12 v2 (unique text per request; runs/spark/e12/corun-v2-6k.json): embed now real compute
+  (1.444 s median, 4,257 prompt tokens/s: confirms v1 was served from the prefix cache). Peak sum **14,725 MiB =
+  14.38 GiB** (embed 6,733 / Clef 7,992), 0 errors (embed 126, Clef 29 at 6.32 s). **But recorded embed
+  prompt_tokens = 6,028-6,036, not 8,192**: my generator (assumed 4.3 chars/token) undershot, so truncation never
+  engaged and Clef got the same ~6k text. Valid as a pass **at 6k-token requests** only; the pre-registered 8k load
+  is still untested (more activation memory on both sides). Embed peak barely moved from v1 (6,733 vs 6,735 MiB)
+  despite real prefills: vLLM's workspace is sized at startup. v3: overshoot the text, both servers truncate to
+  exactly 8,192, assert embed prompt_tokens == 8,192 and record Clef usage.input_tokens.

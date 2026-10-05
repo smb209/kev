@@ -12,6 +12,6 @@ docker logs e12-embed 2>&1 | grep -iE "memory|KV cache|weights" | tail -8 > runs
 QUANT_MEM=60g QUANT_DOCKER_FLAGS="-d --network host -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True" bash spark/quant_run.sh e12-clef \
   python3 spark/clef_server.py --port 8031 --max_length 8192 --fp8-export runs/spark/c10-clef-flash-fp8 --host-embeddings --text-only > /dev/null
 until curl -s -m 3 localhost:8031/v1/models >/dev/null; do docker ps --format "{{.Names}}" | grep -q q-e12-clef || { echo "clef died"; exit 1; }; sleep 10; done
-python3 spark/e12_corun.py --embed http://127.0.0.1:8051 --clef http://127.0.0.1:8031 --seconds 180 --out runs/spark/e12/corun-v2.json > runs/spark/e12/corun-v2.log 2>&1 || echo "corun failed"
+python3 spark/e12_corun.py --embed http://127.0.0.1:8051 --clef http://127.0.0.1:8031 --seconds 180 --out runs/spark/e12/corun-v3.json > runs/spark/e12/corun-v3.log 2>&1 || echo "corun failed"
 docker stop e12-embed q-e12-clef > /dev/null
 echo E12DONE

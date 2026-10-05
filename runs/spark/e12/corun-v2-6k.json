@@ -1,0 +1,36 @@
+{
+ "tokens": 8192,
+ "seconds": 180,
+ "embed_prompt_tokens": {
+  "min": 6028,
+  "max": 6036,
+  "n": 127
+ },
+ "embed_tokens_per_s": 4257,
+ "idle_sum_mib": 13191,
+ "idle_procs": {
+  "4140889": 6107,
+  "4142047": 7084
+ },
+ "peak_per_pid_mib": {
+  "4140889": 6733,
+  "4142047": 7992
+ },
+ "peak_sum_mib": 14725,
+ "peak_sum_gib": 14.38,
+ "pass_15_gib": true,
+ "load": {
+  "embed": {
+   "ok": 126,
+   "err": 0,
+   "median_s": 1.444279670715332,
+   "p95_s": 1.4541223049163818
+  },
+  "clef": {
+   "ok": 29,
+   "err": 0,
+   "median_s": 6.318013429641724,
+   "p95_s": 6.345868110656738
+  }
+ }
+}

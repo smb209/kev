@@ -48,7 +48,7 @@ if __name__ == "__main__":
     ap.add_argument("--tokens", type=int, default=8192); ap.add_argument("--seconds", type=int, default=180)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
-    base = text_of(a.tokens + 800)
+    base = text_of(int(a.tokens * 1.8))   # overshoot: the servers truncate to --tokens (v2 undershot at ~6k)
     seq = iter(range(10**9)); seen = {"embed_prompt_tokens": []}
     def unique():   # a distinct document each call: a leading counter changes every token's context, so no prefix cache can reuse a prefill
         n = next(seq); return f"Document {n}: case {n * 7919 % 104729} of batch {n % 97}. " + base
@@ -56,10 +56,13 @@ if __name__ == "__main__":
         r = post(f"{a.embed}/v1/embeddings", {"model": a.embed_model, "input": [unique()], "truncate_prompt_tokens": a.tokens})
         seen["embed_prompt_tokens"].append((r.get("usage") or {}).get("prompt_tokens"))
     doc = base
-    clef = lambda: post(f"{a.clef}/v1/systemone", {"model": "clef", "state": unique(), "questions": {
+    def clef():
+        r = post(f"{a.clef}/v1/systemone", {"model": "clef", "state": unique(), "questions": QS})
+        seen.setdefault("clef_input_tokens", []).append((r.get("usage") or {}).get("input_tokens"))
+    QS = {
         "billing": {"type": "noul", "instructions": "Is this about a billing problem?"},
         "team": {"type": "choice", "instructions": "Which team should handle it?", "criteria": {"billing": "Payments", "shipping": "Deliveries", "infra": "Infrastructure"}},
-        "urgency": {"type": "score", "instructions": "How urgent is this?", "criteria": ["Routine", "Urgent", "Emergency"]}}})
+        "urgency": {"type": "score", "instructions": "How urgent is this?", "criteria": ["Routine", "Urgent", "Emergency"]}}
     idle = []; ev = threading.Event(); t = threading.Thread(target=sample, args=(ev, idle)); t.start(); time.sleep(5); ev.set(); t.join()
     embed(); clef()   # warm both once (compiles, first-shape allocations) before the measured window
     stop = threading.Event(); samples = []; stats = {n: {"ok": 0, "err": 0, "lat": []} for n in ("embed", "clef")}
@@ -77,8 +80,11 @@ if __name__ == "__main__":
         lat = sorted(stats[n].pop("lat")); stats[n]["median_s"] = lat[len(lat) // 2]; stats[n]["p95_s"] = lat[int(len(lat) * 0.95) - 1]
     pt = [t for t in seen["embed_prompt_tokens"] if t]
     assert pt, "embedding responses carried no usage.prompt_tokens"
+    assert min(pt) == a.tokens, f"embed requests were {min(pt)}-{max(pt)} tokens, not {a.tokens}"
+    ct = [t for t in seen.get("clef_input_tokens", []) if t]
     out = {"tokens": a.tokens, "seconds": a.seconds, "embed_prompt_tokens": {"min": min(pt), "max": max(pt), "n": len(pt)},
-           "embed_tokens_per_s": round(sum(pt) / a.seconds), "idle_sum_mib": max(s["sum_mib"] for s in idle),
+           "embed_tokens_per_s": round(sum(pt) / a.seconds),
+           "clef_input_tokens": {"min": min(ct), "max": max(ct), "n": len(ct)} if ct else None, "idle_sum_mib": max(s["sum_mib"] for s in idle),
            "idle_procs": idle[-1]["procs"], "peak_per_pid_mib": peak, "peak_sum_mib": peak_sum,
            "peak_sum_gib": round(peak_sum / 1024, 2), "pass_15_gib": peak_sum / 1024 <= 15.0, "load": stats}
     json.dump(out, open(a.out, "w"), indent=1)
