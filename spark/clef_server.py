@@ -58,6 +58,7 @@ jsm = importlib.util.module_from_spec(spec); sys.modules["joint_schema_model"] =
 t0 = time.time()
 if a.fp8_export:
     model, processor = clef_fp8.load_fp8(path, device="cuda")
+    dtype += f", fp8 GEMM output {str(clef_fp8.gemm_out_dtype(torch.device('cuda'))).replace('torch.', '')}"   # float32 = the E10-read arithmetic
 else:
     model, processor = jsm.load_release_model(path, device="cuda")
 print(f"loaded {a.repo}@{a.revision[:8]} ({dtype}) in {time.time() - t0:.0f}s, GPU {torch.cuda.memory_allocated() / 2**30:.1f} GiB", flush=True)

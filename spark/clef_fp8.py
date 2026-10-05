@@ -34,6 +34,7 @@ import sys
 import time
 from pathlib import Path
 
+import os
 import torch
 import torch.nn as nn
 
@@ -88,6 +89,28 @@ def _one(device):
     if t is None:
         t = _ONES[device] = torch.ones((), dtype=torch.float32, device=device)
     return t
+
+
+_OUT = {}
+
+
+def gemm_out_dtype(device):
+    """The _scaled_mm output dtype this GPU accepts for e4m3 x e4m3 with tensorwise scales, probed once per device:
+    float32 (the arithmetic every E10 read used: the per-token x per-channel rescale happens before any rounding) or,
+    where cuBLASLt refuses fp32 output (possible on sm_89; unverified), bfloat16 (one bf16 rounding before the rescale,
+    like rowwise kernels with bf16 out). FP8_GEMM_OUT=float32|bfloat16 forces one. Reported by clef_server at start."""
+    key = str(device)
+    if key not in _OUT:
+        forced = os.environ.get("FP8_GEMM_OUT")
+        if forced: _OUT[key] = getattr(torch, forced)
+        else:
+            a = torch.zeros(16, 16, device=device, dtype=torch.float8_e4m3fn)
+            try:
+                torch._scaled_mm(a, a.t(), scale_a=_one(device), scale_b=_one(device), out_dtype=torch.float32)
+                _OUT[key] = torch.float32
+            except RuntimeError:
+                _OUT[key] = torch.bfloat16
+    return _OUT[key]
 
 
 def _quant_rows(x2):
@@ -145,7 +168,8 @@ class PortableFp8Linear(nn.Module):
         x2 = x2.contiguous()
         xq, xs = quant_rows(x2)
         one = _one(x2.device)
-        y = torch._scaled_mm(xq, self.weight.t(), scale_a=one, scale_b=one, out_dtype=torch.float32)
+        y = torch._scaled_mm(xq, self.weight.t(), scale_a=one, scale_b=one, out_dtype=gemm_out_dtype(x2.device))
+        if y.dtype != torch.float32: y = y.float()          # bf16-out fallback (gemm_out_dtype): rescale in fp32 after one rounding
         y.mul_(xs).mul_(self.weight_scale.unsqueeze(0))     # in place: the bits of out * xs * w_scale, one fp32 [M, N] buffer
         if self.bias is not None: y.add_(self.bias.float())
         return y.to(torch.bfloat16).view(*shape[:-1], self.out_features)
