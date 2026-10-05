@@ -31,7 +31,7 @@ digest = hashlib.sha256(code.read_bytes()).hexdigest()
 if digest != REVIEWED_SHA256:
     raise SystemExit(f"{code} sha256 {digest} is not the reviewed {REVIEWED_SHA256}; review it before running")
 spec = importlib.util.spec_from_file_location("joint_schema_model", code)
-jsm = importlib.util.module_from_spec(spec); spec.loader.exec_module(jsm)
+jsm = importlib.util.module_from_spec(spec); sys.modules["joint_schema_model"] = jsm; spec.loader.exec_module(jsm)
 
 t0 = time.time()
 model, processor = jsm.load_release_model(path, device="cuda")
