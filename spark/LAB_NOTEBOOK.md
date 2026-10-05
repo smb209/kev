@@ -390,3 +390,23 @@ pushed; only aggregate reports are committed. Development partition only (test i
 - Secondary: breadth_report's chance-corrected index (5 areas) per system; Clef vs Kev-27B per dataset (same base).
 - Caveat set in advance: breadth-v1's mapping onto Kev's question format may itself suit Kev (it was built for Kev's
   API); and per-dataset n is 150 records, so per-dataset MDE is large (~8-10 pp).
+- 2026-10-05T19:00Z `run` E9: breadth-v1 rebuilt on spark-1 (scripts/build_breadth_v1.py, raw downloads in
+  ~/breadth-raw): **development.jsonl sha256 9aad8f4a... = manifest (byte-identical)**; test 91a64f0a... (not read).
+  Installed only in gitignored evals/breadth-v1/ on both Sparks. Reads (dev, 3,075 q): Clef-Flash 0.8221, Clef 0.8049,
+  Kev-27B v2 0.7567, Kev-9B v2 0.6995 (question accuracy). Load: Clef 391 s / 51.2 GiB, Clef-Flash 138 s / 17.8 GiB.
+- 2026-10-05T19:00Z `check` E9 positive controls: Spark Kev-27B v2 vs runs/r23-27b-k-w85-breadth (H200): 20 flips / 3,075
+  (0.65 %), p99 dp 0.015; Spark Kev-9B v2 vs runs/fam-9bnew-breadth: 1 flip (0.03 %), p99 0.0006 -> pass (E2 rule).
+- 2026-10-05T19:00Z `run` E9 card-direction test (spark/e9_card.py; runs/spark/e8/e9-card-v2.json, -v1.json): vs Kev-9B v2
+  over 14 datasets: Clef 8 reproduces / 4 unresolved / 1 contradicted (SGD: card Kev +20.2, ours Clef +30.7 [+23.3,
+  +38.0]) / 1 tie-but-different (RouterBench: card tie, ours Clef +21.3); Clef-Flash 6 / 4 / 2 contradicted (SGD +31.3,
+  CLINC150: card Clef-Flash -12.2, ours +16.7) / 2 tie-but-different (RouterBench +38.7, BRIGHT +10.7). Every
+  contradiction is in Clef's favour; Kev-9B significantly beats neither Clef model on any dataset (closest: ToolRet
+  -2.7 / -4.0, n.s.). vs Kev-9B v1 (context): Clef 9 / 3 / 1 / 1; Clef-Flash 6 / 4 / 2 / 2.
+- 2026-10-05T19:00Z `run` E9 breadth_report (runs/spark/e8/e9-breadth-report): Decision-Index-style index (5 areas,
+  chance-corrected): Clef-Flash 66.0, Clef 62.3, Jev 53.3 (committed rows), Kev-27B v2 51.6, Kev-9B v2 43.3, Kev-9B v1
+  41.7. Clef per dataset vs Kev-27B: higher on 11 of 14; Kev-27B higher on ToolRet (0.687 vs 0.633) and ContractNLI
+  (0.806 vs 0.800), equal on BFCL (0.960).
+- 2026-10-05T19:00Z `finding` (pending review) **E9: Cloudflare's card directions reproduce on breadth-v1 or understate
+  Clef; Clef / Clef-Flash lead Kev-9B (and Kev-27B) on this OOD-for-Kev panel by 10-23 index points.** Caveat stated in
+  advance stays: Clef's training data is undisclosed; CLINC150 1.000 and SGD 0.967 are consistent with (not proof of)
+  those datasets' train splits in Clef's training, which breadth-v1 deliberately excludes from Kev's.
