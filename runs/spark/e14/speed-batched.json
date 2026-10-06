@@ -1,0 +1,34 @@
+{
+ "label": "batched",
+ "records": 100,
+ "by_concurrency": {
+  "1": {
+   "req_per_s": 9.23,
+   "p50_ms": 103.6,
+   "p95_ms": 147.3,
+   "mean_batch_size": 1.0,
+   "mean_input_tokens": 232.0
+  },
+  "4": {
+   "req_per_s": 6.98,
+   "p50_ms": 477.9,
+   "p95_ms": 914.8,
+   "mean_batch_size": 3.94,
+   "mean_input_tokens": 232.0
+  },
+  "8": {
+   "req_per_s": 6.1,
+   "p50_ms": 1317.2,
+   "p95_ms": 1875.1,
+   "mean_batch_size": 7.78,
+   "mean_input_tokens": 232.0
+  },
+  "16": {
+   "req_per_s": 5.07,
+   "p50_ms": 3297.9,
+   "p95_ms": 4236.7,
+   "mean_batch_size": 15.46,
+   "mean_input_tokens": 232.0
+  }
+ }
+}

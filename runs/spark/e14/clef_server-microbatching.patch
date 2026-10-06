@@ -1,0 +1,152 @@
+diff --git a/spark/clef_server.py b/spark/clef_server.py
+index e88a5fb..8d107b1 100644
+--- a/spark/clef_server.py
++++ b/spark/clef_server.py
+@@ -15,8 +15,13 @@ export's source and must match it when given. Everything after the load is the s
+ 
+ E11a: --host-embeddings keeps embed_tokens and the output embedding in pinned CPU memory, --text-only skips the vision tower
+ (and answers 422 to requests with images / videos); same probabilities, about 4.7 GiB less GPU memory.
++
++E14: micro-batching. Handlers enqueue; one worker thread (the only one that touches the model) blocks for a request, drains
++whatever else is already queued (never waits for more) up to --batch-max-requests requests / --batch-max-tokens input tokens, and
++runs one collate_records + forward for the batch. A request over the token budget by itself runs alone. --batch-max-requests 1 is
++one record per forward, as before. Responses add batch_size, queue_ms and compute_ms; latency_ms = queue_ms + compute_ms.
+ """
+-import argparse, hashlib, importlib.util, sys, threading, time
++import argparse, asyncio, hashlib, importlib.util, queue, sys, threading, time
+ from pathlib import Path
+ 
+ import torch
+@@ -35,7 +40,10 @@ ap.add_argument("--text-only", action="store_true", help="with --fp8-export: do
+ ap.add_argument("--host", default="127.0.0.1")
+ ap.add_argument("--port", type=int, default=8031)
+ ap.add_argument("--max_length", type=int, default=16384)
++ap.add_argument("--batch-max-tokens", type=int, default=8192, help="micro-batch cap: total encoded input tokens (a longer single request runs alone)")
++ap.add_argument("--batch-max-requests", type=int, default=16, help="micro-batch cap: requests per forward pass (1 = one record per forward)")
+ a = ap.parse_args()
++if a.batch_max_requests < 1 or a.batch_max_tokens < 1: raise SystemExit("--batch-max-requests and --batch-max-tokens must be >= 1")
+ if (a.host_embeddings or a.text_only) and not a.fp8_export: raise SystemExit("--host-embeddings / --text-only need --fp8-export")
+ dtype = "bfloat16"
+ 
+@@ -70,33 +78,20 @@ if a.fp8_export:
+ else:
+     model, processor = jsm.load_release_model(path, device="cuda")
+ print(f"loaded {a.repo}@{a.revision[:8]} ({dtype}) in {time.time() - t0:.0f}s, GPU {torch.cuda.memory_allocated() / 2**30:.1f} GiB", flush=True)
+-lock = threading.Lock()
+ app = FastAPI()
++jobs = queue.Queue()   # (body, future, loop, enqueue time)
+ 
+ 
+-@app.get("/v1/models")
+-def models():
+-    return {"models": [{"name": a.repo, "revision": a.revision, "device": torch.cuda.get_device_name(0), "dtype": dtype}]}
++def resolve(job, result=None, error=None):
++    _, fut, loop, _ = job
++    def put():
++        if fut.done(): return   # the client went away
++        if error is not None: fut.set_exception(error)
++        else: fut.set_result(result)
++    loop.call_soon_threadsafe(put)
+ 
+ 
+-@app.post("/v1/systemone")
+-async def systemone(request: Request):
+-    body = await request.json()
+-    questions = body.get("questions")
+-    if "state" not in body or not isinstance(questions, dict) or not questions:
+-        raise HTTPException(422, "state and at least one question are required")
+-    if a.text_only and (body.get("images") or body.get("videos")):
+-        raise HTTPException(422, "this server runs with --text-only (no vision tower): requests with images or videos are not supported")
+-    with lock:
+-        start = time.perf_counter()
+-        try:
+-            enc = jsm.encode_record(processor.tokenizer, body, max_length=a.max_length, processor=processor)
+-        except ValueError as e:   # over max_length and similar: the harness treats 422 as a context overflow
+-            raise HTTPException(422, str(e))
+-        with torch.inference_mode():
+-            logits = model(jsm.collate_records([enc], processor.tokenizer.pad_token_id, torch.device("cuda")))[0]
+-        torch.cuda.synchronize()
+-        latency = 1000 * (time.perf_counter() - start)
++def answers_for(enc, logits, questions):
+     answers = {}
+     for q, z in zip(enc.questions, logits):
+         p = dict(zip(q.option_ids, z.float().softmax(-1).tolist()))
+@@ -109,8 +104,76 @@ async def systemone(request: Request):
+         else:
+             answers[q.question_id] = {"type": "score", "score": sum(int(k) * v for k, v in p.items()), "confidence": max(p.values()),
+                                       "probabilities": p}
+-    return {"model": body.get("model", a.repo), "answers": answers, "latency_ms": latency,
+-            "usage": {"input_tokens": len(enc.input_ids), "output_tokens": 0}}
++    return answers
++
++
++def encode_job(job):
++    """Encode one request; a ValueError (over max_length and similar: the harness treats 422 as a context overflow) goes back to its caller only."""
++    try:
++        return jsm.encode_record(processor.tokenizer, job[0], max_length=a.max_length, processor=processor)
++    except ValueError as e:
++        resolve(job, error=HTTPException(422, str(e)))
++    except Exception as e:
++        resolve(job, error=HTTPException(500, f"{type(e).__name__}: {e}"))
++    return None
++
++
++def worker():
++    carry = None   # a request drained but over the budget: it starts the next batch
++    while True:
++        first = carry if carry is not None else jobs.get()
++        carry = None
++        started = time.perf_counter()
++        batch, tokens = [], 0
++        item = first
++        while True:
++            enc = encode_job(item) if item is not None else None
++            if enc is not None:
++                if batch and tokens + len(enc.input_ids) > a.batch_max_tokens:
++                    carry = item   # re-encoded when it starts the next batch (only when the budget cut this one)
++                    break
++                batch.append((item, enc)); tokens += len(enc.input_ids)
++            if len(batch) >= a.batch_max_requests: break
++            try: item = jobs.get_nowait()
++            except queue.Empty: break
++        if not batch: continue
++        try:
++            with torch.inference_mode():
++                out = model(jsm.collate_records([e for _, e in batch], processor.tokenizer.pad_token_id, torch.device("cuda")))
++            torch.cuda.synchronize()
++            ended = time.perf_counter()
++            for (job, enc), logits in zip(batch, out):
++                questions = job[0]["questions"]
++                queue_ms, compute_ms = 1000 * (started - job[3]), 1000 * (ended - started)
++                resolve(job, {"model": job[0].get("model", a.repo), "answers": answers_for(enc, logits, questions),
++                              "latency_ms": queue_ms + compute_ms, "queue_ms": queue_ms, "compute_ms": compute_ms, "batch_size": len(batch),
++                              "usage": {"input_tokens": len(enc.input_ids), "output_tokens": 0}})
++        except Exception as e:   # a failed pass fails its batch, not the server
++            print(f"batch of {len(batch)} failed: {type(e).__name__}: {e}", flush=True)
++            for job, _ in batch: resolve(job, error=HTTPException(500, f"{type(e).__name__}: {e}"))
++
++
++threading.Thread(target=worker, daemon=True, name="clef-worker").start()
++
++
++@app.get("/v1/models")
++def models():
++    return {"models": [{"name": a.repo, "revision": a.revision, "device": torch.cuda.get_device_name(0), "dtype": dtype,
++                        "batching": {"max_requests": a.batch_max_requests, "max_tokens": a.batch_max_tokens}}]}
++
++
++@app.post("/v1/systemone")
++async def systemone(request: Request):
++    body = await request.json()
++    questions = body.get("questions") if isinstance(body, dict) else None
++    if not isinstance(body, dict) or "state" not in body or not isinstance(questions, dict) or not questions:
++        raise HTTPException(422, "state and at least one question are required")
++    if a.text_only and (body.get("images") or body.get("videos")):
++        raise HTTPException(422, "this server runs with --text-only (no vision tower): requests with images or videos are not supported")
++    loop = asyncio.get_running_loop()
++    fut = loop.create_future()
++    jobs.put((body, fut, loop, time.perf_counter()))
++    return await fut
+ 
+ 
+ uvicorn.run(app, host=a.host, port=a.port, log_level="warning")

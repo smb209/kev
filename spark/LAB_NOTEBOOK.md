@@ -680,3 +680,16 @@ haumea only after passing.
   p95 latency, batching on vs --batch-max-requests 1.
 - Memory (gate, on haumea): whole-card peak under combined load (2 embed streams of 8k + Clef concurrency 8 mixing
   short and 8k requests) <= 15,800 MiB with 0 errors; else revert to --batch-max-requests 1.
+- 2026-10-06T21:00 (haumea clock) `run` E14 on spark-1 (one server at a time; spark/clef_batch_check.py;
+  runs/spark/e14/*.json). Correctness: 200 transfer-v9 records, concurrency 8 batched 99 % of requests (192 at
+  batch_size 8): argmax agreement **98.0 % (4 flips)**, dp max **0.128**, p99 0.086, median 0.0026 -> **gate FAILED**
+  (>= 99 % and <= 0.05). Throughput (100 short requests, 232 input tokens mean): batching 9.23 / 6.98 / 6.10 / 5.07
+  req/s at concurrency 1 / 4 / 8 / 16 vs --batch-max-requests 1: 9.22 / 9.46 / 9.48 / 9.46 (p50 at 16: 3,298 vs 1,743
+  ms). Batching is slower and degrades with batch size.
+- 2026-10-06T21:00 `finding` (against my prediction) **micro-batching does not help Clef-Flash at ~230-token requests
+  and shifts answers beyond tolerance -> not deployed; code reverted** (implementation kept as
+  runs/spark/e14/clef_server-microbatching.patch). My prediction ("eight short requests in the time of one or two",
+  weight-bandwidth-bound) was wrong for this request size: compute-bound crossover ~ F / (2B) ~ 85 TFLOPS / (2 x 224
+  GB/s) ~ 190 tokens on GB10 (4060 Ti ~ 300, spec-sheet estimate), so a 232-token request already saturates compute;
+  the extra slowdown with batch size and the numerical shift are undiagnosed (padding / kernel shapes suspected, not
+  shown). Untested: much shorter requests (< ~150 tokens), where batching could still pay.

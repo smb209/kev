@@ -1,0 +1,16 @@
+{
+ "records": 200,
+ "questions": 200,
+ "batched_fraction": 0.99,
+ "batch_size_hist": {
+  "1": 2,
+  "6": 6,
+  "8": 192
+ },
+ "argmax_agreement": 0.98,
+ "flips": 4,
+ "dp_max": 0.1280578374862671,
+ "dp_p99": 0.08622298136353472,
+ "dp_median": 0.0026106685400009155,
+ "pass": false
+}
