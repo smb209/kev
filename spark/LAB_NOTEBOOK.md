@@ -666,3 +666,17 @@ from the live process: Qwen3-Embedding-8B FP8, max-model-len 32768, max-num-seqs
   Clef 8k alternating 10-question + a short-doc burst; runs/spark/e13/corun-4060-seqs16.json): **whole-card peak 14,912
   MiB** (was 14,856 at 1 seq), headroom 1,468 MiB, 0 errors -> kept. Short docs queue behind 8k chunks (burst during
   the co-run: 0.2-14 docs/s, 6.7-8.9 s p50): the 1.25 GiB KV pool holds one 8k chunk at a time.
+
+**E14 Clef-Flash micro-batching (pre-registered 2026-10-06 ~20:30 haumea clock, before implementation).** User asked
+for it. clef_server.py today serialises requests behind a lock (one record per forward pass). Change: a worker drains
+whatever requests are queued (never waits for more), packs them into one collate_records batch capped at
+--batch-max-tokens 8192 total input tokens and --batch-max-requests 16, runs one forward, and splits answers back.
+--batch-max-requests 1 = today's behaviour. Each response reports batch_size. Built and validated on spark-1 first;
+haumea only after passing.
+- Correctness (gate): the same 200 transfer-v9 development records (unknowable excluded), short states, sent once at
+  concurrency 1 (every batch_size 1) and once at concurrency 8 (batches > 1, confirmed from batch_size), same server
+  build. Pass = argmax agreement >= 99 % AND max |dp| <= 0.05 over all questions. Report flips and dp p99.
+- Throughput (report): short requests (~300 tokens, 3 questions) at concurrency 1 / 4 / 8 / 16: requests/s and p50 /
+  p95 latency, batching on vs --batch-max-requests 1.
+- Memory (gate, on haumea): whole-card peak under combined load (2 embed streams of 8k + Clef concurrency 8 mixing
+  short and 8k requests) <= 15,800 MiB with 0 errors; else revert to --batch-max-requests 1.
