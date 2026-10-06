@@ -1,0 +1,6 @@
+haumea RTX 4060 Ti, Qwen3-Embedding-4B (FP8 weights, bf16 KV pinned 1.25 GiB, max-num-seqs 1), 2026-10-05, Clef-Flash idle.
+spark/embed_throughput.py, unique ~460-char docs, 20 s per pattern:
+1 doc/request, serial             36.8 docs/s     3066 tok/s    83 tok/doc   request p50     27 ms   (736 requests, 736 docs, 20 s)
+32 docs/request, serial           40.2 docs/s     3387 tok/s    84 tok/doc   request p50    792 ms   (26 requests, 832 docs, 21 s)
+32 docs/request, 4 parallel       41.2 docs/s     3484 tok/s    84 tok/doc   request p50   3095 ms   (29 requests, 928 docs, 22 s)
+GPU 0 memory.used after: 14862 MiB

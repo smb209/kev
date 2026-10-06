@@ -653,3 +653,9 @@ from the live process: Qwen3-Embedding-8B FP8, max-model-len 32768, max-num-seqs
   together on the user's RTX 4060 Ti at a 14.86 GB peak of 16.38 (1.5 GiB headroom), deployed and left running.**
   Run book on haumea: /home/scott/ai-stack/README.md (copy: spark/haumea-ai-stack-README.md); rollback to the 8B tested.
   Not set up: start at boot (needs the user's say; the old 8B was also manual).
+- 2026-10-06T17:30 (haumea clock) `run` short-document embedding throughput on the live 4B (max-num-seqs 1; spark/
+  embed_throughput.py, unique ~460-char docs, ~84 tokens each; runs/spark/e13/throughput-seqs1.txt): 36.8 docs/s at 1
+  doc/request, 40.2 at 32 docs/request, 41.2 at 32 x 4 parallel (~3,400 tokens/s; vs ~5,600 tokens/s on one 8k chunk).
+  Batching and parallelism only queue at max-num-seqs 1. fooddb re-embed (~52k inputs) at this rate: ~22 min.
+  Open: raising max-num-seqs (KV pin of 1.25 GiB = ~9,100 bf16 tokens already holds ~90 short sequences; the unknown is
+  CUDA-graph memory at larger batch sizes vs 1.5 GiB headroom) - needs the user's OK for an embedder restart.
