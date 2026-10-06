@@ -5,7 +5,7 @@ on port 8000) is separate and not managed here.
 
 | service | port | served name | what |
 |---|---|---|---|
-| embeddings (vLLM, conda env `vllm`) | 8001 | `qwen3-embedding-4b` | Qwen3-Embedding-4B, FP8 weights, bf16 KV cache, 8,192-token max, 1 sequence |
+| embeddings (vLLM, conda env `vllm`) | 8001 | `qwen3-embedding-4b` | Qwen3-Embedding-4B, FP8 weights, bf16 KV cache, 8,192-token max, up to 16 sequences |
 | decisions (`clef_server.py`, venv) | 8031 | `Cloudflare/clef-flash` | Clef-Flash 9B, FP8 export, text-only, `/v1/systemone` (Jev / System One API) |
 
 ## Run it
@@ -32,7 +32,9 @@ To go back to the old 8B embedder: `bash stop-4060-stack.sh && bash ROLLBACK-qwe
   never returned. It was not tested on this box (0.27.1), because a hung request could wedge the single sequence slot.
 - Queries use `Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: <text>`;
   documents are sent bare.
-- One embedding is processed at a time (`--max-num-seqs 1`); others queue. An 8k chunk takes ~1.45 s alone and ~3.1 s
+- Up to 16 sequences run at once (`--max-num-seqs 16`, raised 2026-10-05 20:05; KV still pinned at 1.25 GiB, which
+  holds one 8k chunk or ~90 short docs). Short docs (~85 tokens): ~39 docs/s one per request, ~82 docs/s in batches of
+  32, ~94 docs/s with 4 parallel batches. Short docs queue behind 8k chunks. An 8k chunk takes ~1.45 s alone and ~3.1 s
   while Clef-Flash is also busy.
 - Clef-Flash is text-only: requests with images or videos get HTTP 422. States go up to 8,192 tokens including the
   questions. Short requests take ~0.1-0.6 s and 8k requests ~8 s. The first request after a start takes ~15-20 s
@@ -40,7 +42,7 @@ To go back to the old 8B embedder: `bash stop-4060-stack.sh && bash ROLLBACK-qwe
 
 ## Measured on this card (2026-10-05, 180 s of interleaved 8k load)
 
-- Idle: ~13.7 GB of 16.4. Peak: **14,856 MiB of 16,380 (1.5 GiB headroom)**. Embedder 6.6 GiB, Clef-Flash 8.2 GiB.
+- Idle: ~13.7 GB of 16.4. Peak: **14,856 MiB of 16,380 (1.5 GiB headroom)** at 1 sequence; **14,912 MiB** at 16 sequences (2 streams of 8k chunks + short-doc batches + 8k Clef requests at once). Embedder 6.6 GiB, Clef-Flash 8.2 GiB.
 - 0 errors over 59 embeddings and 22 Clef-Flash requests.
 - Clef-Flash answers match the DGX Spark reference to within a few hundredths. Its FP8 path uses fp32 GEMM output.
 

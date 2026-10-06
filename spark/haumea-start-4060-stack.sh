@@ -8,7 +8,7 @@ source /home/scott/miniconda3/etc/profile.d/conda.sh && conda activate vllm   # 
 export CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 HF_HUB_OFFLINE=1 VLLM_USE_FLASHINFER_SAMPLER=0
 setsid nohup /home/scott/miniconda3/envs/vllm/bin/vllm serve /home/scott/models/Qwen3-Embedding-4B \
   --served-model-name qwen3-embedding-4b --runner pooling --quantization fp8 --kv-cache-dtype auto \
-  --max-model-len 8192 --max-num-seqs 1 --kv-cache-memory-bytes 1342177280 \
+  --max-model-len 8192 --max-num-seqs 16 --kv-cache-memory-bytes 1342177280 \
   --attention-backend flashinfer --host 0.0.0.0 --port 8001 >> $S/embed-4b.log 2>&1 < /dev/null &
 echo $! > $S/embed.pid
 echo "embedder starting (pid $(cat $S/embed.pid)), log $S/embed-4b.log"

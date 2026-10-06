@@ -659,3 +659,10 @@ from the live process: Qwen3-Embedding-8B FP8, max-model-len 32768, max-num-seqs
   Batching and parallelism only queue at max-num-seqs 1. fooddb re-embed (~52k inputs) at this rate: ~22 min.
   Open: raising max-num-seqs (KV pin of 1.25 GiB = ~9,100 bf16 tokens already holds ~90 short sequences; the unknown is
   CUDA-graph memory at larger batch sizes vs 1.5 GiB headroom) - needs the user's OK for an embedder restart.
+- 2026-10-06T20:05 (haumea clock) `run` embedder raised to --max-num-seqs 16 (user: "if it's idle just bump it"; last
+  external request before 18:40). Keep/revert rule, written before measuring: keep iff whole-card peak <= 15,800 MiB
+  under combined load with 0 errors. Downtime 20:04:15-20:05:17. Short docs (~84 tokens): 38.6 docs/s at 1/request
+  (was 36.8), 81.7 at 32/request (was 40.2), 94.4 at 32 x 4 parallel (was 41.2). Worst case (2 streams of 8k embeds +
+  Clef 8k alternating 10-question + a short-doc burst; runs/spark/e13/corun-4060-seqs16.json): **whole-card peak 14,912
+  MiB** (was 14,856 at 1 seq), headroom 1,468 MiB, 0 errors -> kept. Short docs queue behind 8k chunks (burst during
+  the co-run: 0.2-14 docs/s, 6.7-8.9 s p50): the 1.25 GiB KV pool holds one 8k chunk at a time.
